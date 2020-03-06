@@ -1,5 +1,5 @@
 /**********
- * Copyright (c) 2017, Xilinx, Inc.
+ * Copyright (c) 2017-2019, Xilinx, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without modification,
@@ -36,18 +36,16 @@
 #define GEMX_FPGA_H
 
 #include "assert.h"
-#include "gemx_kernel.h"
+#include "gemx_gen_bin.h"
 #include <stdio.h>
 #include <vector>
 #include <string>
 #include <fstream>
-#include "CL/cl.h"
-#include "CL/cl_ext.h"
-#include <boost/compute.hpp>
 #include <iostream>
 #include <iterator>
+#include "xcl2.hpp"
 
-
+//#define GEMX_numKernels GEMX_layers
 namespace gemx {
 
 class Fpga
@@ -55,240 +53,108 @@ class Fpga
   private:
     std::string  m_XclbinFile;
 
-    boost::compute::context        m_Context;
-    boost::compute::command_queue  m_CommandQueue;
-    boost::compute::program        m_Program;
-    boost::compute::kernel         m_Kernel[GEMX_numKernels];
-    boost::compute::buffer         m_Buffer[GEMX_numKernels];
-    boost::compute::wait_list	   m_waitInput[GEMX_numKernels];
-    boost::compute::wait_list	   m_waitOutput[GEMX_numKernels];
-    size_t                         m_DataSize[GEMX_numKernels];
-    unsigned int                   m_KernelId;
-  private:
-
-    ///////////////////////////////////////////////////////////////////////////
-    std::vector<char>
-    load_file_to_memory(std::string p_FileName) { 
-        std::vector<char> l_vec;
-        std::ifstream l_file(p_FileName.c_str());
-        if (l_file.is_open() && !l_file.eof() && !l_file.fail()) {
-          l_file.seekg(0, std::ios_base::end);
-          std::streampos l_fileSize = l_file.tellg();
-          l_vec.resize(l_fileSize);
-          l_file.seekg(0, std::ios_base::beg);
-          l_file.read(&l_vec[0], l_fileSize);
-          if (!l_file) {
-            l_vec.clear();
-          }
-        }
-        return(l_vec);
-      }
-
+    cl::Context       m_Context;
+    cl::CommandQueue  m_CommandQueue;
+    cl::Program       m_Program;
+    cl::Kernel        m_Kernels[GEMX_numKernels];
+    std::vector<cl::Memory>				m_Buffers[GEMX_numKernels];
+    std::vector<cl::Event>	   		m_Mem2FpgaEvents[GEMX_numKernels];
+    std::vector<cl::Event>	   		m_ExeKernelEvents[GEMX_numKernels];
 
   public:
     Fpga()
-      {}
+    {}
 
-    Fpga(unsigned int p_KernelId)
-      : m_KernelId(p_KernelId)
-      {}
-    ///////////////////////////////////////////////////////////////////////////
     bool
-    loadXclbin(std::string p_XclbinFile, std::string p_KernelName[GEMX_numKernels]) {
-        bool ok = false;
-        // https://gitenterprise.xilinx.com/rkeryell/heterogeneous_examples/blob/master/vector_add/SDAccel-Boost.Compute/vector_add.cpp
-        
-        // Create the OpenCL context to attach resources on the device
-        m_Context = std::move(boost::compute::system::default_context());
-        // Create the OpenCL command queue to control the device
-        //m_CommandQueue = std::move(boost::compute::system::default_queue());
- 		//boost::compute::command_queue queue(boost::compute::system::default_context(), boost::compute::system::default_device(), CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE | CL_QUEUE_PROFILING_ENABLE);
- 		boost::compute::command_queue queue(boost::compute::system::default_context(), boost::compute::system::default_device(), CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE);
-		m_CommandQueue = std::move(queue);
-        // Construct an OpenCL program from the precompiled kernel file
-        m_Program = std::move(
-          boost::compute::program::create_with_binary_file(p_XclbinFile,
-                                                           m_Context));
-        m_Program.build();
-
-        for (int i=0; i<GEMX_numKernels; ++i) {
-			m_Kernel[i] = std::move(boost::compute::kernel(m_Program, p_KernelName[i]));
-        }
-        ok = true;
-        return(ok);
-      }
-
-
-    ///////////////////////////////////////////////////////////////////////////
-	bool createBuffers(MemDesc p_MemDesc[GEMX_numKernels]) {
-        bool ok = false;
-        
-        //decltype of cl_mem_ext_ptr_t.flags
-        unsigned l_k2bank[] = {GEMX_fpgaDdrBanks};
-        
-        cl_mem_ext_ptr_t l_bufExt;
-        //l_bufExt.obj = NULL;
-        l_bufExt.param = 0;
-		for (unsigned int kernelId=0; kernelId<GEMX_numKernels; ++kernelId){
-        	l_bufExt.flags = l_k2bank[kernelId];
-        	l_bufExt.obj = p_MemDesc[kernelId].data();
-        	m_DataSize[kernelId] = p_MemDesc[kernelId].sizeBytes();
-        	// Buffers
-        	m_Buffer[kernelId] = boost::compute::buffer(m_Context, m_DataSize[kernelId],
-                      CL_MEM_USE_HOST_PTR | CL_MEM_READ_WRITE | CL_MEM_EXT_PTR_XILINX,
-                      &l_bufExt);
-		}
-		ok = true;
-		return(ok);
-	}	
-		
-    ///////////////////////////////////////////////////////////////////////////
-    bool
-    copyToFpga() {
-        bool ok = false;
-        
-        boost::compute::event l_event;
-		for (unsigned int kernelId=0; kernelId<GEMX_numKernels; ++kernelId){
-
-        	// Send the input data to the accelerator
-			l_event = m_CommandQueue.enqueue_migrate_memory_objects(1, &(m_Buffer[kernelId].get()), 0);
-			m_waitInput[kernelId].insert(l_event);
-		}
-		ok = true;
-        return(ok);
-      }
-
-    ///////////////////////////////////////////////////////////////////////////
-    bool
-    callKernels() {
-        bool ok = false;
-        
-        boost::compute::extents<1> offset { 0 };
-        boost::compute::extents<1> global { 1 };
-        // Use only 1 CU
-        boost::compute::extents<1> local { 1 };
-        // Launch kernels
-        boost::compute::event l_event;
-        for (unsigned int kernelId=0; kernelId<GEMX_numKernels; ++kernelId){
-        	m_Kernel[kernelId].set_args(m_Buffer[kernelId], m_Buffer[kernelId]);
-        	l_event = m_CommandQueue.enqueue_nd_range_kernel(m_Kernel[kernelId], offset, global, local, m_waitInput[kernelId]);
-			m_waitOutput[kernelId].insert(l_event);
-			m_waitInput[kernelId].clear();
-		}
-        ok = true;
-        return(ok);
-      }
-    
-    ///////////////////////////////////////////////////////////////////////////
-    bool
-    copyFromFpga() {
-        bool ok = false;
-       
-		boost::compute::event l_readEvents[GEMX_numKernels]; 
-        for (unsigned int kernelId=0; kernelId<GEMX_numKernels; ++kernelId) {
-        	l_readEvents[kernelId] = m_CommandQueue.enqueue_migrate_memory_objects(1, &(m_Buffer[kernelId].get()), CL_MIGRATE_MEM_OBJECT_HOST, m_waitOutput[kernelId]);
-		m_waitOutput[kernelId].clear();
-		}
-		for (int i=0; i<GEMX_numKernels; ++i) {
-			l_readEvents[i].wait();
-		}
-		ok=true;
-        return(ok);
-      }
-      ///////////////////////////////////////////////////////////////////////////
-      bool clearAll(){
-	bool ok = false;
-	clReleaseContext(m_Context);
-	clReleaseProgram(m_Program);
-	clReleaseCommandQueue(m_CommandQueue);
-	for (int i=0; i<GEMX_numKernels; ++i) {
-	  clReleaseKernel(m_Kernel[i]);
-	  clReleaseMemObject(m_Buffer[i].get());
-	}
-	ok=true;
+    loadXclbin(std::string p_xclbinFile) {
+    	bool ok = false;
+			std::vector<cl::Device> l_devices = xcl::get_xil_devices();
+			cl::Device l_device = l_devices[0];
+			std::string l_deviceName = l_device.getInfo<CL_DEVICE_NAME>();
+			std::cout << "INFO: device name is: " << l_deviceName << std::endl;
+      // Create the OpenCL context, cmmandQueue and program 
+      cl::Context l_context(l_device);
+      m_Context = l_context;
+			cl::CommandQueue l_cmdQueue(m_Context, l_device,  CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE | CL_QUEUE_PROFILING_ENABLE);
+			m_CommandQueue = l_cmdQueue;
+			cl::Program::Binaries l_bins = xcl::import_binary_file(p_xclbinFile);
+			l_devices.resize(1);
+			cl::Program l_program(m_Context, l_devices, l_bins);
+      m_Program = l_program;
+      ok = true;
       return(ok);
-      }
-    ///////////////////////////////////////////////////////////////////////////
-    bool
-    loadXclbinWithoutEvent(std::string p_XclbinFile, std::string p_KernelName[GEMX_numKernels]) {
-        bool ok = false;
-        // https://gitenterprise.xilinx.com/rkeryell/heterogeneous_examples/blob/master/vector_add/SDAccel-Boost.Compute/vector_add.cpp
-        
-        // Create the OpenCL context to attach resources on the device
-        m_Context = std::move(boost::compute::system::default_context());
-        // Create the OpenCL command queue to control the device
-        m_CommandQueue = std::move(boost::compute::system::default_queue());
+    }
 
-        // Construct an OpenCL program from the precompiled kernel file
-        m_Program = std::move(
-          boost::compute::program::create_with_binary_file(p_XclbinFile,
-                                                           m_Context));
-        m_Program.build();
-	for (int i=0; i<GEMX_numKernels; ++i) {
-	  m_Kernel[i] = std::move(boost::compute::kernel(m_Program, p_KernelName[i]));
-        }
-        ok = true;
-        return(ok);
-      }
-    ///////////////////////////////////////////////////////////////////////////
-	bool
-    copyToFpgaWithoutEvent(MemDesc &p_MemDesc) {
-        bool ok = false;
-        for (unsigned int kernelId=0; kernelId<GEMX_numKernels; ++kernelId) {
-        //decltype of cl_mem_ext_ptr_t.flags
-        unsigned l_k2bank[] = {GEMX_fpgaDdrBanks};
-        
-        cl_mem_ext_ptr_t l_bufExt;
-        l_bufExt.obj = NULL;
-        l_bufExt.param = 0;
-		
-		l_bufExt.flags = l_k2bank[kernelId];
-	
-		m_DataSize[kernelId] = p_MemDesc.sizeBytes();
-		// Buffers
-		m_Buffer[kernelId] = boost::compute::buffer(m_Context, m_DataSize[kernelId],
-				  CL_MEM_READ_WRITE | CL_MEM_EXT_PTR_XILINX,
-				  &l_bufExt);
-
-		// Send the input data to the accelerator
-		 m_CommandQueue.enqueue_write_buffer(m_Buffer[kernelId], 0 ,m_DataSize[kernelId], p_MemDesc.data());
-		m_Kernel[kernelId].set_args(m_Buffer[kernelId], m_Buffer[kernelId]);
-	}
-        ok = true;
-        return(ok);
-      }
-
-    ///////////////////////////////////////////////////////////////////////////
-    bool
-    callKernelWithoutEvent() {
-        bool ok = false;
-        
-        boost::compute::extents<1> offset { 0 };
-        boost::compute::extents<1> global { 1 };
-        // Use only 1 CU
-        boost::compute::extents<1> local { 1 };
-        // Launch kernel
-	for (unsigned int kernelId=0; kernelId<GEMX_numKernels; ++kernelId) {
-	  m_CommandQueue.enqueue_nd_range_kernel(m_Kernel[kernelId], offset, global, local);
-	}
-        ok = true;
-        return(ok);
-      }
-    ///////////////////////////////////////////////////////////////////////////
-    bool
-    copyFromFpgaWithoutEvent(MemDesc p_MemDesc[GEMX_numKernels]) {
-        bool ok = false;
-        
-		for (unsigned int kernelId=0; kernelId<GEMX_numKernels; ++kernelId) {
-		assert(p_MemDesc[kernelId].sizeBytes() == m_DataSize[kernelId]);
-		// Get the output data from the accelerator
-		m_CommandQueue.enqueue_read_buffer(m_Buffer[kernelId], 0 /* Offset */,
-									   m_DataSize[kernelId], p_MemDesc[kernelId].data());
+		bool
+		createKernel(unsigned int p_kernelId, std::string p_kernelName[GEMX_numKernels]) {
+			bool ok = false;
+			assert(p_kernelId < GEMX_numKernels);
+			cl::Kernel l_kernel(m_Program, p_kernelName[p_kernelId].c_str());
+			m_Kernels[p_kernelId] = l_kernel;
+			ok = true;
+			return(ok);
 		}
 		
-		ok = (p_MemDesc[0].sizePages() > 0);
-        return(ok);
+		bool 
+		createBufferForKernel(unsigned int p_kernelId, MemDesc p_memDesc[GEMX_numKernels]) {
+			bool ok = false;
+			
+			assert(p_kernelId < GEMX_numKernels);
+			cl::Buffer l_buffer(m_Context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_WRITE, p_memDesc[p_kernelId].sizeBytes(), p_memDesc[p_kernelId].data());
+			m_Buffers[p_kernelId].push_back(l_buffer);	
+			m_Kernels[p_kernelId].setArg(0, l_buffer);
+			m_Kernels[p_kernelId].setArg(1, l_buffer);
+//			m_Kernels[p_kernelId].setArg(0, m_Buffers); // hting1 modified
+//			m_Kernels[p_kernelId].setArg(1, m_Buffers);
+			ok = true;
+			return(ok);
+		}
+	
+    bool
+    copyToKernel(unsigned int p_kernelId) {
+      bool ok = false;
+      assert(p_kernelId < GEMX_numKernels);  
+      cl::Event l_event;
+      // Send the input data to the accelerator
+			m_CommandQueue.enqueueMigrateMemObjects(m_Buffers[p_kernelId], 0/* 0 means from host*/, NULL, &l_event);
+			m_Mem2FpgaEvents[p_kernelId].push_back(l_event);
+			ok = true;
+      return(ok);
     }
+
+    bool
+    callKernel(unsigned int p_kernelId) {
+    	bool ok = false;
+      assert(p_kernelId < GEMX_numKernels);
+
+      cl::Event l_event;
+//	m_Kernels[p_kernelId].setArg(0, m_Buffers); // not here
+//	m_Kernels[p_kernelId].setArg(1, m_Buffers);
+      m_CommandQueue.enqueueTask(m_Kernels[p_kernelId], &(m_Mem2FpgaEvents[p_kernelId]), &l_event);
+			m_ExeKernelEvents[p_kernelId].push_back(l_event);
+			m_Mem2FpgaEvents[p_kernelId].clear();
+      ok = true;
+      return(ok);
+    }
+
+    bool
+    copyFromKernel(unsigned int p_kernelId) {
+    	bool ok = false;
+			assert(p_kernelId < GEMX_numKernels);
+			cl::Event l_event;
+      m_CommandQueue.enqueueMigrateMemObjects(m_Buffers[p_kernelId], CL_MIGRATE_MEM_OBJECT_HOST, &(m_ExeKernelEvents[p_kernelId]));
+			m_ExeKernelEvents[p_kernelId].clear();
+			ok=true;
+      return(ok);
+    }
+		bool
+		finish() {
+			bool ok = false;
+			m_CommandQueue.finish();
+			ok = true;
+			return(ok);
+		}
+
 };
 
 } // namespace
