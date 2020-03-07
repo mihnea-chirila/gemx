@@ -53,8 +53,7 @@ void GemmCall( DdrWideType* M,  //input/output matrix
 	     int l_LdB,  
 	     int l_LdC, 
 	     int l_LdX,
-    	     int l_postScaleVal,
-	     int l_postScaleShift
+    	     int l_postScaleVal
            )
 {
     #pragma HLS INTERFACE m_axi port=M offset=slave bundle=gmemm
@@ -67,7 +66,6 @@ void GemmCall( DdrWideType* M,  //input/output matrix
     #pragma HLS INTERFACE s_axilite port=l_LdC bundle=control
     #pragma HLS INTERFACE s_axilite port=l_LdX bundle=control
     #pragma HLS INTERFACE s_axilite port=l_postScaleVal bundle=control
-    #pragma HLS INTERFACE s_axilite port=l_postScaleShift bundle=control
     #pragma HLS INTERFACE s_axilite port=return bundle=control
 
     GemmType l_gemm;
@@ -75,7 +73,7 @@ void GemmCall( DdrWideType* M,  //input/output matrix
     DdrWideType *l_aAddr = M;
     DdrWideType *l_bAddr = M + l_M*l_K/GEMX_ddrWidth;
     DdrWideType *l_xAddr = M + l_M*l_K/GEMX_ddrWidth + l_K*l_N/GEMX_ddrWidth;
-    DdrWideType *l_cAddr = M + l_M*l_K/GEMX_ddrWidth + l_K*l_N/GEMX_ddrWidth + l_N*l_N/GEMX_XddrWidth;
+    DdrWideType *l_cAddr = M + l_M*l_K/GEMX_ddrWidth + l_K*l_N/GEMX_ddrWidth + l_M*l_N/GEMX_XddrWidth;
 
     int t_aColMemWords = l_K/GEMX_ddrWidth, t_aRowMemWords = l_M/GEMX_ddrWidth, t_bColMemWords = l_N/GEMX_ddrWidth;
         	const unsigned int l_aColBlocks = l_K / (GEMX_ddrWidth * t_aColMemWords);
@@ -89,19 +87,35 @@ void GemmCall( DdrWideType* M,  //input/output matrix
 
       #ifndef __SYNTHESIS__
     	std::cout<<"p_DdrRd = "<<l_aAddr<<std::endl;
-    	std::cout<<"l_aAddr = "<<l_aAddr<<std::endl;
-	std::cout<<"l_bAddr = "<<l_bAddr<<std::endl;
-	std::cout<<"l_cAddr = "<<l_cAddr<<std::endl;
-	std::cout<<"l_xAddr = "<<l_xAddr<<std::endl;
-        std::cout<<"l_M = "<<l_M<<std::endl;
-        std::cout<<"l_K = "<<l_K<<std::endl;
-        std::cout<<"l_N = "<<l_N<<std::endl;
-        std::cout<<"l_LdA = "<<l_LdA<<std::endl;
-        std::cout<<"l_LdB = "<<l_LdB<<std::endl;
-        std::cout<<"l_LdC = "<<l_LdC<<std::endl;
-        std::cout<<"l_LdX = "<<l_LdX<<std::endl;
-        std::cout<<"l_postScaleVal = "<<l_postScaleVal<<std::endl;
-        std::cout<<"l_transpBlocks = "<<l_transpBlocks<<std::endl;
+//    	std::cout<<"l_aAddr = "<<l_aAddr<<std::endl;
+//	std::cout<<"l_bAddr = "<<l_bAddr<<std::endl;
+//	std::cout<<"l_cAddr = "<<l_cAddr<<std::endl;
+//	std::cout<<"l_xAddr = "<<l_xAddr<<std::endl;
+//        std::cout<<"l_M = "<<l_M<<std::endl;
+//        std::cout<<"l_K = "<<l_K<<std::endl;
+//        std::cout<<"l_N = "<<l_N<<std::endl;
+//        std::cout<<"l_LdA = "<<l_LdA<<std::endl;
+//        std::cout<<"l_LdB = "<<l_LdB<<std::endl;
+//        std::cout<<"l_LdC = "<<l_LdC<<std::endl;
+//        std::cout<<"l_LdX = "<<l_LdX<<std::endl;
+//        std::cout<<"l_postScaleVal = "<<l_postScaleVal<<std::endl;
+//        std::cout<<"l_transpBlocks = "<<l_transpBlocks<<std::endl;
+					std::cout<<"l_aAddr = "<<l_aAddr<<std::endl;
+					std::cout<<"l_bAddr = "<<l_bAddr<<std::endl;
+					std::cout<<"l_cAddr = "<<l_cAddr<<std::endl;
+					std::cout<<"l_xAddr = "<<l_xAddr<<std::endl;
+					std::cout<<"l_aColBlocks = "<<l_aColBlocks<<std::endl;
+					std::cout<<"l_aRowBlocks = "<<l_aRowBlocks<<std::endl;
+					std::cout<<"l_bColBlocks = "<<l_bColBlocks<<std::endl;
+					std::cout<<"l_aLd = "<<l_aLd<<std::endl;
+					std::cout<<"l_bLd = "<<l_bLd<<std::endl;
+					std::cout<<"l_cLd = "<<l_cLd<<std::endl;
+					std::cout<<"l_xLd = "<<l_xLd<<std::endl;
+					std::cout<<"l_transpBlocks = "<<l_transpBlocks<<std::endl;
+					std::cout<<"l_postScaleVal = "<<l_postScaleVal<<std::endl;
+					std::cout<<"l_M = "<<l_M<<std::endl;
+					std::cout<<"l_N = "<<l_N<<std::endl;
+					std::cout<<"l_K = "<<l_K<<std::endl;
       #endif
 
     l_gemm.GemmBlocks(l_aAddr, l_bAddr, l_cAddr, l_xAddr,l_aColBlocks, l_aRowBlocks, l_bColBlocks, l_aLd, l_bLd, l_cLd, l_xLd, l_transpBlocks, l_postScaleVal);

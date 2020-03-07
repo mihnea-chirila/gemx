@@ -397,7 +397,8 @@ HOST_LDFLAGS += $(xcl2_LDFLAGS)
 .PHONY: all
 
 #all: host run_cpu_em run_hw_em run_hw
-all: gemx_func_test
+#all: gemx_func_test
+all: run_apiGemm_cpu_em
 
 gemm_perf: ${API_GEMM_EXE}
 	+make SDA_FLOW=hw run_hw_int  2>&1 | tee log-run_hw.txt; test -f ${MAKE_EXIT_OK_HW_FILE}
