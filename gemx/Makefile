@@ -38,7 +38,7 @@ GEMX_gemvmGroups   			=  1
 
 
 GEMX_gemmMBlocks   			= 1
-GEMX_gemmKBlocks   			= 1
+GEMX_gemmKBlocks   			= 2
 GEMX_gemmNBlocks   			= 1
 GEMX_splitMesh	   			= 0
 

@@ -75,7 +75,7 @@ void GemmCall( DdrWideType* M,  //input/output matrix
     DdrWideType *l_xAddr = M + l_M*l_K/GEMX_ddrWidth + l_K*l_N/GEMX_ddrWidth;
     DdrWideType *l_cAddr = M + l_M*l_K/GEMX_ddrWidth + l_K*l_N/GEMX_ddrWidth + l_M*l_N/GEMX_XddrWidth;
 
-    int t_aColMemWords = l_K/GEMX_ddrWidth, t_aRowMemWords = l_M/GEMX_ddrWidth, t_bColMemWords = l_N/GEMX_ddrWidth;
+    int t_aColMemWords = GEMX_gemmKBlocks, t_aRowMemWords = GEMX_gemmMBlocks, t_bColMemWords = GEMX_gemmNBlocks;
         	const unsigned int l_aColBlocks = l_K / (GEMX_ddrWidth * t_aColMemWords);
         	const unsigned int l_aRowBlocks = l_M / (GEMX_ddrWidth * t_aRowMemWords);
         	const unsigned int l_bColBlocks = l_N / (GEMX_ddrWidth * t_bColMemWords);
