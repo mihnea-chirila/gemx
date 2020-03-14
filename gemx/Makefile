@@ -37,9 +37,9 @@ GEMX_gemvmVectorBlocks  = 512
 GEMX_gemvmGroups   			=  1
 
 
-GEMX_gemmMBlocks   			= 1
+GEMX_gemmMBlocks   			= 2
 GEMX_gemmKBlocks   			= 2
-GEMX_gemmNBlocks   			= 1
+GEMX_gemmNBlocks   			= 2
 GEMX_splitMesh	   			= 0
 
 GEMX_keepMacBits				= 0
@@ -274,7 +274,8 @@ else ifeq (${GEMX_part},vcu1525)
   K3_DDR = 3
 endif
 
-CLCC_LINK_OPT += --sp gemxKernel_0.m_axi_gmemm:bank${K0_DDR}
+CLCC_LINK_OPT += --sp GemmCall_1.m_axi_gmemm:bank${K0_DDR}
+#CLCC_LINK_OPT += --sp gemxKernel_0.m_axi_gmemm:bank${K0_DDR}
 ifeq ($(shell test $(GEMX_numKernels) -gt 1; echo $$?),0)
   CLCC_LINK_OPT += --sp gemxKernel_1.m_axi_gmemm:bank${K1_DDR}
 endif
@@ -366,16 +367,16 @@ GEMX_HOST_CFLAGS = -O2 -std=c++11 -fPIC \
 
 GEMX_HOST_LFLAGS = -L$(BOOST_LIB) -L$(XILINX_SDX)/runtime/lib/lnx64.o -lz -lxilinxopencl -lstdc++ -lrt -pthread
 
-KERNEL_XOS = ${OUT_DIR}/k0dir/gemx.xo
-ifeq ($(shell test $(GEMX_numKernels) -gt 1; echo $$?),0)
-  KERNEL_XOS += ${OUT_DIR}/k1dir/gemx.xo
-endif
-ifeq ($(shell test $(GEMX_numKernels) -gt 2; echo $$?),0)
-  KERNEL_XOS += ${OUT_DIR}/k2dir/gemx.xo
-endif
-ifeq ($(shell test $(GEMX_numKernels) -gt 3; echo $$?),0)
-  KERNEL_XOS += ${OUT_DIR}/k3dir/gemx.xo
-endif
+#KERNEL_XOS = ${OUT_DIR}/k0dir/gemx.xo
+#ifeq ($(shell test $(GEMX_numKernels) -gt 1; echo $$?),0)
+#  KERNEL_XOS += ${OUT_DIR}/k1dir/gemx.xo
+#endif
+#ifeq ($(shell test $(GEMX_numKernels) -gt 2; echo $$?),0)
+#  KERNEL_XOS += ${OUT_DIR}/k2dir/gemx.xo
+#endif
+#ifeq ($(shell test $(GEMX_numKernels) -gt 3; echo $$?),0)
+#  KERNEL_XOS += ${OUT_DIR}/k3dir/gemx.xo
+#endif
 
 #hting1
 KERNEL_XOS += ${OUT_DIR}/mmult.xo
@@ -517,7 +518,9 @@ ${OUT_DIR}/k%dir/gemx.xo : src/* | ${OUT_DIR}/k%dir
 
 # Building 04 mmul kernel
 $(OUT_DIR)/mmult.xo: ./src_uci/mmult.cpp
-	$(CLCC) -c ${CLCC_COMP_OPT} $(CLFLAGS) --xp prop:kernel.GemmCall.kernel_flags=-std=c++0x -k GemmCall -o'$@' '$<' -DOCL
+	@echo "***** Compiling XO $@ *****"
+	#$(CLCC) -c ${CLCC_COMP_OPT} $(CLFLAGS) --xp prop:kernel.GemmCall.kernel_flags=-std=c++0x -k GemmCall -o'$@' '$<' -DOCL
+	$(CLCC) --temp_dir ${OUT_DIR} -c ${CLCC_COMP_OPT} $(CLFLAGS) --xp prop:kernel.GemmCall.kernel_flags=-std=c++0x -k GemmCall -o'$@' '$<' -DOCL
 
 xbinst_apiGemm_hw: api_gemm
 	@echo 'Running xbinst...'

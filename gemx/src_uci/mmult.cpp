@@ -45,7 +45,8 @@ typedef hls::stream<XDdrWideType> XDdrStream;
 
 // Creating and passing buffer to GEMX
 extern "C" {
-void GemmCall( DdrWideType* M,  //input/output matrix
+void GemmCall( DdrWideType* p_DdrRd,  //input/output matrix
+		DdrWideType* p_DdrWr,
     	     int l_M,  
 	     int l_K,  
 	     int l_N,
@@ -56,8 +57,11 @@ void GemmCall( DdrWideType* M,  //input/output matrix
     	     int l_postScaleVal
            )
 {
-    #pragma HLS INTERFACE m_axi port=M offset=slave bundle=gmemm
-    #pragma HLS INTERFACE s_axilite port=M bundle=control
+    #pragma HLS INLINE self off
+    #pragma HLS INTERFACE m_axi port=p_DdrRd offset=slave bundle=gmemm num_write_outstanding=16 num_read_outstanding=16 max_write_burst_length=16 max_read_burst_length=16 depth=16 latency=125
+    #pragma HLS INTERFACE m_axi port=p_DdrWr offset=slave bundle=gmemm num_write_outstanding=16 num_read_outstanding=16 max_write_burst_length=16 max_read_burst_length=16 depth=16 latency=125
+    #pragma HLS INTERFACE s_axilite port=p_DdrRd bundle=control
+    #pragma HLS INTERFACE s_axilite port=p_DdrWr bundle=control
     #pragma HLS INTERFACE s_axilite port=l_M bundle=control
     #pragma HLS INTERFACE s_axilite port=l_K bundle=control
     #pragma HLS INTERFACE s_axilite port=l_N bundle=control
@@ -67,13 +71,15 @@ void GemmCall( DdrWideType* M,  //input/output matrix
     #pragma HLS INTERFACE s_axilite port=l_LdX bundle=control
     #pragma HLS INTERFACE s_axilite port=l_postScaleVal bundle=control
     #pragma HLS INTERFACE s_axilite port=return bundle=control
+    #pragma HLS DATA_PACK variable=p_DdrRd
+    #pragma HLS DATA_PACK variable=p_DdrWr
 
     GemmType l_gemm;
 
-    DdrWideType *l_aAddr = M;
-    DdrWideType *l_bAddr = M + l_M*l_K/GEMX_ddrWidth;
-    DdrWideType *l_xAddr = M + l_M*l_K/GEMX_ddrWidth + l_K*l_N/GEMX_ddrWidth;
-    DdrWideType *l_cAddr = M + l_M*l_K/GEMX_ddrWidth + l_K*l_N/GEMX_ddrWidth + l_M*l_N/GEMX_XddrWidth;
+    DdrWideType *l_aAddr = p_DdrRd;
+    DdrWideType *l_bAddr = p_DdrRd + l_M*l_K/GEMX_ddrWidth;
+    DdrWideType *l_xAddr = p_DdrRd + l_M*l_K/GEMX_ddrWidth + l_K*l_N/GEMX_ddrWidth;
+    DdrWideType *l_cAddr = p_DdrWr + l_M*l_K/GEMX_ddrWidth + l_K*l_N/GEMX_ddrWidth + l_M*l_N/GEMX_XddrWidth;
 
     int t_aColMemWords = GEMX_gemmKBlocks, t_aRowMemWords = GEMX_gemmMBlocks, t_bColMemWords = GEMX_gemmNBlocks;
         	const unsigned int l_aColBlocks = l_K / (GEMX_ddrWidth * t_aColMemWords);

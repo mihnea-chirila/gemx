@@ -145,6 +145,7 @@ uint64_t GEMM_fpga (
 
         int narg = 0;
 	kernel1.setArg(narg++, buffer);
+	kernel1.setArg(narg++, buffer);
     	kernel1.setArg(narg++, l_M);
         kernel1.setArg(narg++, l_K);
         kernel1.setArg(narg++, l_N);
@@ -211,13 +212,13 @@ int main(int argc, char **argv)
     //Create the test data and Software Result
     int loc = 0;
     loop_readA:for(int i = 0; i < matrix_ABsize_bytes/sizeof(GEMX_dataType); i++, loc++) {
-        source_in1[loc] = source_inA[i] = 1;
+        source_in1[loc] = source_inA[i] = rand()%2;
     }
     loop_readBX:for(int i = 0; i < matrix_ABsize_bytes/sizeof(GEMX_dataType); i++, loc++) {
-        source_in1[loc] = source_inB[i] = 1;
+        source_in1[loc] = source_inB[i] = rand()%2;
     }
     loop_readX:for(int i = 0; i < matrix_Xsize_bytes/sizeof(GEMX_XdataType); i++, loc++) {
-	source_in1[loc] = source_inX[i] = 1;
+	source_in1[loc] = source_inX[i] = rand()%2;
     }
     //Provided to initialize C to various values
     int C_start = loc;
