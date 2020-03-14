@@ -426,7 +426,7 @@ run_apiGemm_hw_em: api_gemm
 	+make SDA_FLOW=hw_emu run_apiGemm_em_int  2>&1 | tee log-run_apiGemm_hw_em.txt
 
 run_apiGemm_hw: api_gemm
-	+make SDA_FLOW=hw run_hw_int  2>&1 | tee log-run_apiGemm_hw.txt; test -f ${MAKE_EXIT_OK_HW_FILE}
+	+make SDA_FLOW=hw run_apiGemm_int 2>&1 | tee log-run_apiGemm_hw.txt; test -f ${MAKE_EXIT_OK_HW_FILE}
 
 run_hw: host
 	+make SDA_FLOW=hw run_hw_int  2>&1 | tee log-run_hw.txt; test -f ${MAKE_EXIT_OK_HW_FILE}
@@ -440,6 +440,11 @@ run_apiGemm_em_int: xconfig api_gemm xbin
 	#cp sdaccel.ini ${OUT_HOST_DIR}/.
 	@echo INFO: kernel xclbin frequency is $(shell ${XCLBIN_FREQ} ${XCLBIN}) MHz
 	XCL_EMULATION_MODE=true XILINX_OPENCL=${XILINX_SDX} ${API_GEMM_EXE} ${XCLBIN} ${GEN_BIN_PROGRAM}
+
+run_apiGemm_int: xconfig xbinst_apiGemm_hw xbin
+	#cp sdaccel.ini ${OUT_HOST_DIR}/.
+	@echo INFO: kernel xclbin frequency is $(shell ${XCLBIN_FREQ} ${XCLBIN}) MHz
+	XILINX_OPENCL=${XILINX_SDX} ${API_GEMM_EXE} ${XCLBIN} ${GEN_BIN_PROGRAM}
 
 run_hw_int : xbin xbinst_apiGemm_hw
 	@echo INFO: kernel xclbin frequency is $(shell ${XCLBIN_FREQ} ${XCLBIN}) MHz
@@ -524,7 +529,12 @@ $(OUT_DIR)/mmult.xo: ./src_uci/mmult.cpp
 
 xbinst_apiGemm_hw: api_gemm
 	@echo 'Running xbinst...'
-	${XBINST_PATH}/xbinst --platform_repo_paths=${PLATFORM_REPO_PATH} --platform $(XDEVICE) -d ${OUT_DIR}
+#	${XBINST_PATH}/xbinst --platform_repo_paths=${PLATFORM_REPO_PATH} --platform $(XDEVICE) -d ${OUT_DIR}
+	if [ -d "$(OUT_DIR)/xbinst" ]; then \
+	  echo "INFO: $(OUT_DIR)/xbinst already exists!!"; \
+	else \
+	  $(XILINX_SDX)/bin/xbinst --platform_repo_paths=${PLATFORM_REPO_PATH} --platform $(XDEVICE) -d ${OUT_DIR}; \
+	fi
 
 xbinst_hw:  host
 	@echo 'Running xbinst...'
