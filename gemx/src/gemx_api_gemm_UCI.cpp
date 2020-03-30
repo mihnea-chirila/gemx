@@ -63,7 +63,7 @@
 
 
 //Dimension of square input array
-#define DATA_SIZE 64
+#define DATA_SIZE 4096
 //Each matrix A, B, X, and C represent a quarter of the input matrix
 size_t matrix_Xsize_bytes = sizeof(GEMX_XdataType) * DATA_SIZE * DATA_SIZE;
 size_t matrix_ABsize_bytes = sizeof(GEMX_dataType) * DATA_SIZE * DATA_SIZE;
@@ -76,8 +76,10 @@ void MatMul(GEMX_dataType *in1, GEMX_dataType *in2, GEMX_dataType *in, GEMX_data
     for(int j = 0; j < outCol; j++) {
         out[i * outCol + j] = in[i * outCol + j];//e_a;
         for(int k = 0; k < midSize; k++) {
-	    out[i * outCol + j] += in1[i * midSize + k] * in2[k * outCol + j];
+	    //out[i * outCol + j] += in1[i * midSize + k] * in2[k * outCol + j];
+            out[i * outCol + j] = add(out[i * outCol + j], mul(in1[i * midSize + k], in2[k * outCol + j]));
         }
+    	out[i * outCol + j] = add(in[i * outCol + j], out[i * outCol + j]);
     }
   }
 }
@@ -212,13 +214,13 @@ int main(int argc, char **argv)
     //Create the test data and Software Result
     int loc = 0;
     loop_readA:for(int i = 0; i < matrix_ABsize_bytes/sizeof(GEMX_dataType); i++, loc++) {
-        source_in1[loc] = source_inA[i] = rand() % 10;
+        source_in1[loc] = source_inA[i] = rand() % 10 +1;
     }
     loop_readBX:for(int i = 0; i < matrix_ABsize_bytes/sizeof(GEMX_dataType); i++, loc++) {
-        source_in1[loc] = source_inB[i] = rand() % 10;
+        source_in1[loc] = source_inB[i] = rand() % 10 +1;
     }
     loop_readX:for(int i = 0; i < matrix_Xsize_bytes/sizeof(GEMX_XdataType); i++, loc++) {
-	source_in1[loc] = source_inX[i] = rand() % 10;
+	source_in1[loc] = source_inX[i] = rand() % 10 +1;
     }
     //Provided to initialize C to various values
     int C_start = loc;

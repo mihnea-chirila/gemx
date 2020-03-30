@@ -39,6 +39,9 @@
 #include "gemx_types.h"
 #include "gemx_transp.h"
 
+#define add(a,b) (((a)<(b))?(a):(b))
+#define mul(a,b) ((a)+(b))
+
 namespace gemx {
 //implement C = A*B+X
      
@@ -183,7 +186,9 @@ class Gemm
 					#if GEMX_keepMacBits
           p_C = p_A * p_B + (p_Flush ? 0 : p_C.to_int64());
 					#else
-          p_C = p_A * p_B + (p_Flush ? 0 : p_C);
+          //p_C = p_A * p_B + (p_Flush ? 0 : p_C);
+	  p_C = add(mul(p_A, p_B), (p_Flush ? INT_MAX : p_C));
+	  //p_C = mul(p_A, p_B) + (p_Flush ? INT_MAX : p_C);
           #endif
         }
     
@@ -1437,7 +1442,8 @@ public:
 									  	l_bufferCReg[k] =l_val[k];
 										}
 										else {
-											l_bufferCReg[k] += l_val[k];
+											//l_bufferCReg[k] += l_val[k];
+											l_bufferCReg[k] = add(l_bufferCReg[k], l_val[k]);
 										}
 								  #ifndef __SYNTHESIS__
 									  (t_debug >= 1) && std::cout << l_val[k] << "  ";
@@ -1529,7 +1535,8 @@ public:
 									FloatBitType l_entryFl = l_entryPS1(t_FloatBits-1,0);
 									l_cEntry = l_entryFl.to_int();			
 							#else
-								 	l_cEntry = macBitsToFloatType(l_val[w]+l_xVal[w]);
+								 	//l_cEntry = macBitsToFloatType(l_val[w]+l_xVal[w]);
+									l_cEntry = macBitsToFloatType(add(l_val[w], l_xVal[w]));
 							#endif
 								l_cWord[w] = l_cEntry;			
 							}
