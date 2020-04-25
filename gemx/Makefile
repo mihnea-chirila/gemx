@@ -275,6 +275,7 @@ else ifeq (${GEMX_part},vcu1525)
 endif
 
 CLCC_LINK_OPT += --sp GemmCall_1.m_axi_gmemm:bank${K0_DDR}
+CLCC_LINK_OPT += --sp FW_1.m_axi_gmemm:bank${K0_DDR}
 #CLCC_LINK_OPT += --sp gemxKernel_0.m_axi_gmemm:bank${K0_DDR}
 ifeq ($(shell test $(GEMX_numKernels) -gt 1; echo $$?),0)
   CLCC_LINK_OPT += --sp gemxKernel_1.m_axi_gmemm:bank${K1_DDR}
@@ -380,6 +381,7 @@ GEMX_HOST_LFLAGS = -L$(BOOST_LIB) -L$(XILINX_SDX)/runtime/lib/lnx64.o -lz -lxili
 
 #hting1
 KERNEL_XOS += ${OUT_DIR}/mmult.xo
+KERNEL_XOS += ${OUT_DIR}/fw.xo
 
 HOST_LDFLAGS += -lpthread -lstdc++ -L$(XILINX_SDX)/runtime/lib/x86_64 -lOpenCL
 
@@ -526,6 +528,12 @@ $(OUT_DIR)/mmult.xo: ./src_uci/mmult.cpp
 	@echo "***** Compiling XO $@ *****"
 	#$(CLCC) -c ${CLCC_COMP_OPT} $(CLFLAGS) --xp prop:kernel.GemmCall.kernel_flags=-std=c++0x -k GemmCall -o'$@' '$<' -DOCL
 	$(CLCC) --temp_dir ${OUT_DIR} -c ${CLCC_COMP_OPT} $(CLFLAGS) --xp prop:kernel.GemmCall.kernel_flags=-std=c++0x -k GemmCall -o'$@' '$<' -DOCL
+
+# Building fw kernel
+$(OUT_DIR)/fw.xo: ./src_uci/fw.cpp
+	@echo "***** Compiling XO $@ *****"
+	#$(CLCC) -c ${CLCC_COMP_OPT} $(CLFLAGS) --xp prop:kernel.GemmCall.kernel_flags=-std=c++0x -k GemmCall -o'$@' '$<' -DOCL
+	$(CLCC) --temp_dir ${OUT_DIR} -c ${CLCC_COMP_OPT} $(CLFLAGS) --xp prop:kernel.FW.kernel_flags=-std=c++0x -k FW -o'$@' '$<' -DOCL
 
 xbinst_apiGemm_hw: api_gemm
 	@echo 'Running xbinst...'
