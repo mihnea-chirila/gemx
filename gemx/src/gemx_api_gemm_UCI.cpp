@@ -222,7 +222,7 @@ uint64_t callFW (
     //
     // //Creating Context and Command Queue for selected Device
     cl::Context context(device);
-    cl::CommandQueue q1(context, device, CL_QUEUE_PROFILING_ENABLE);
+    cl::CommandQueue q1(context, device, CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE | CL_QUEUE_PROFILING_ENABLE);
     //
     std::string device_name = device.getInfo<CL_DEVICE_NAME>();
     //
@@ -381,8 +381,8 @@ int main(int argc, char **argv)
     std::cout << "Computing MM on FPGA... \n";
 
     //Compute FPGA Results
-    kernel_duration = GEMM_fpga(l_xclbinFile, source_in1, l_M, l_K, l_N, l_LdA, l_LdB, l_LdC, l_LdX, l_postScale);
-    //kernel_duration = callFW(l_xclbinFile, source_fpga, source_fpga_results, DATA_SIZE*2);
+    //kernel_duration = GEMM_fpga(l_xclbinFile, source_in1, l_M, l_K, l_N, l_LdA, l_LdB, l_LdC, l_LdX, l_postScale);
+    kernel_duration = callFW(l_xclbinFile, source_fpga, source_fpga_results, DATA_SIZE*2);
 
        std::cout << "The FPGA results are: ";
     /*   std::cout << std::endl << "C:";

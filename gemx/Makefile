@@ -101,7 +101,7 @@ ifeq (${GEMX_part},kcu1500)
   DSA_PLATFORM=xilinx_kcu1500_dynamic_${DSA}
   XDEVICE_REPO_PATH=$(XILINX_SDX)/platforms
   PLATFORM_REPO_PATH=$(XILINX_SDX)/platforms/${DSA_PLATFORM}
-	XOPENCL_LIB_PATH=${PLATFORM_REPO_PATH}/sw/lib/x86_64
+  XOPENCL_LIB_PATH=${PLATFORM_REPO_PATH}/sw/lib/x86_64
 else ifeq (${GEMX_part},vcu1525)
   DSA=5_0
   XDEVICE_COLON=xilinx:vcu1525:dynamic:$(subst _,.,${DSA})
@@ -274,7 +274,7 @@ else ifeq (${GEMX_part},vcu1525)
   K3_DDR = 3
 endif
 
-CLCC_LINK_OPT += --sp GemmCall_1.m_axi_gmemm:bank${K0_DDR}
+#CLCC_LINK_OPT += --sp GemmCall_1.m_axi_gmemm:bank${K0_DDR}
 CLCC_LINK_OPT += --sp FW_1.m_axi_gmemm:bank${K0_DDR}
 #CLCC_LINK_OPT += --sp gemxKernel_0.m_axi_gmemm:bank${K0_DDR}
 ifeq ($(shell test $(GEMX_numKernels) -gt 1; echo $$?),0)
@@ -366,7 +366,7 @@ GEMX_HOST_CFLAGS = -O2 -std=c++11 -fPIC \
 									-D GEMX_fpgaDdrBanks=${GEMX_fpgaDdrBanks} \
 									-Wno-ignored-attributes
 
-GEMX_HOST_LFLAGS = -L$(BOOST_LIB) -L$(XILINX_SDX)/runtime/lib/lnx64.o -lz -lxilinxopencl -lstdc++ -lrt -pthread
+GEMX_HOST_LFLAGS = -L$(BOOST_LIB) -L$(XILINX_SDX)/runtime/lib/x86_64.o -lz -L$(XOPENCL_LIB_PATH) -lxilinxopencl -lstdc++ -lrt -pthread
 
 #KERNEL_XOS = ${OUT_DIR}/k0dir/gemx.xo
 #ifeq ($(shell test $(GEMX_numKernels) -gt 1; echo $$?),0)
@@ -380,7 +380,7 @@ GEMX_HOST_LFLAGS = -L$(BOOST_LIB) -L$(XILINX_SDX)/runtime/lib/lnx64.o -lz -lxili
 #endif
 
 #hting1
-KERNEL_XOS += ${OUT_DIR}/mmult.xo
+#KERNEL_XOS += ${OUT_DIR}/mmult.xo
 KERNEL_XOS += ${OUT_DIR}/fw.xo
 
 HOST_LDFLAGS += -lpthread -lstdc++ -L$(XILINX_SDX)/runtime/lib/x86_64 -lOpenCL
@@ -496,7 +496,7 @@ ${GEN_BIN_EXE} : ./src/* | ${OUT_HOST_DIR}
 ${API_GEMM_EXE} : ./src/* | ${OUT_HOST_DIR}
 	@echo "***** Compile testcase generator executable *****"
 	@echo ${CC} ${HOST_CFLAGS} ${HOST_LFLAGS}
-	${CC} ${HOST_CFLAGS} ${HOST_LFLAGS} src/gemx_api_gemm_UCI.cpp src/host/xcl2/xcl2.cpp -o $@
+	${CC} ${HOST_CFLAGS} ${HOST_LFLAGS} src/gemx_api_gemm_UCI.cpp src/xcl2.cpp -o $@
 
 ${API_SPMV_EXE} : ./src/* | ${OUT_HOST_DIR}
 	@echo "***** Compile testcase generator executable *****"
