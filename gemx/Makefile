@@ -223,8 +223,8 @@ ifeq (${SDA_FLOW},hw_emu)
 endif
 
 
-CLCC_LINK_OPT += --kernel_frequency ${GEMX_kernelVivadoFreq} #--profile_kernel data:all:all:all --profile_kernel exec:all:all:all
-CLCC_OPT += --xp prop:solution.hls_pre_tcl=hls_config.tcl  #--profile_kernel stall:all:all:all
+CLCC_LINK_OPT += --kernel_frequency ${GEMX_kernelVivadoFreq} --profile_kernel data:all:all:all --profile_kernel exec:all:all:all --profile_kernel stall:all:all:all
+CLCC_OPT += --xp prop:solution.hls_pre_tcl=hls_config.tcl  --profile_kernel stall:all:all:all
 HOST_CFLAGS = -g -O0 -std=c++11 \
               -I $(BOOST_SRC) \
               -DCL_USE_DEPRECATED_OPENCL_1_1_APIS \
@@ -274,7 +274,7 @@ else ifeq (${GEMX_part},vcu1525)
   K3_DDR = 3
 endif
 
-#CLCC_LINK_OPT += --sp GemmCall_1.m_axi_gmemm:bank${K0_DDR}
+CLCC_LINK_OPT += --sp GemmCall_1.m_axi_gmemm:bank${K0_DDR}
 CLCC_LINK_OPT += --sp FW_1.m_axi_gmemm:bank${K0_DDR}
 #CLCC_LINK_OPT += --sp gemxKernel_0.m_axi_gmemm:bank${K0_DDR}
 ifeq ($(shell test $(GEMX_numKernels) -gt 1; echo $$?),0)
@@ -380,7 +380,7 @@ GEMX_HOST_LFLAGS = -L$(BOOST_LIB) -L$(XILINX_SDX)/runtime/lib/x86_64.o -lz -L$(X
 #endif
 
 #hting1
-#KERNEL_XOS += ${OUT_DIR}/mmult.xo
+KERNEL_XOS += ${OUT_DIR}/mmult.xo
 KERNEL_XOS += ${OUT_DIR}/fw.xo
 
 HOST_LDFLAGS += -lpthread -lstdc++ -L$(XILINX_SDX)/runtime/lib/x86_64 -lOpenCL

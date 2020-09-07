@@ -63,7 +63,7 @@
 
 
 //Dimension of square input array
-#define DATA_SIZE 8
+#define DATA_SIZE 32
 //Each matrix A, B, X, and C represent a quarter of the input matrix
 size_t matrix_Xsize_bytes = sizeof(GEMX_XdataType) * DATA_SIZE * DATA_SIZE;
 size_t matrix_ABsize_bytes = sizeof(GEMX_dataType) * DATA_SIZE * DATA_SIZE;
@@ -198,6 +198,109 @@ uint64_t GEMM_fpga (
     return kernel_duration;
 }
 
+uint64_t Both_fpga (
+    std::string l_xclbinFile,  //xclbinFile
+    std::vector<GEMX_dataType,aligned_allocator<GEMX_dataType>>& source_in1,   //Input/Otput Matrix 1
+    std::vector<GEMX_dataType,aligned_allocator<GEMX_dataType>>& source_fpga_results,
+    int l_M,
+    int l_K,
+    int l_N,
+    int l_LdA,
+    int l_LdB,
+    int l_LdC,
+    int l_LdX,
+    int l_postScale,
+    int dim,                                         //One dimension of matrix
+    int offset
+)
+{
+    cl::Event l_event_1, l_event_2, l_event_3;
+    uint64_t kernel_duration = 0;
+
+    //The get_xil_devices will return vector of Xilinx Devices
+    std::vector<cl::Device> devices = xcl::get_xil_devices();
+    cl::Device device = devices[0];
+
+    //Creating Context and Command Queue for selected Device
+    cl::Context context(device);
+    cl::CommandQueue q1(context, device, CL_QUEUE_PROFILING_ENABLE);
+
+    std::string device_name = device.getInfo<CL_DEVICE_NAME>();
+
+    //import_binary() command will find the OpenCL binary file created using the
+    //xocc compiler load into OpenCL Binary and return as Binaries
+    //OpenCL and it can contain many functions which can be executed on the
+    //device.;
+    cl::Program::Binaries bins = xcl::import_binary_file(l_xclbinFile);
+    devices.resize(1);
+    cl::Program program(context, devices, bins);
+
+    //This call will extract a kernel out of the program we loaded in the
+    //previous line. A kernel is an OpenCL function that is executed on the
+    //FPGA. This function is defined in the src/mmult.cl file.
+    cl::Kernel kernel1(program,"GemmCall");
+    cl::Kernel kernel2(program,"FW");
+    std::vector<cl::Memory> m_Buffers;
+
+	//These commands will allocate memory on the FPGA. The cl::Buffer
+	//objects can be used to reference the memory locations on the device.
+	//The cl::Buffer object cannot be referenced directly and must be passed
+	//to other OpenCL functions.
+	cl::Buffer buffer(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_WRITE, matrix_size_bytes, source_in1.data());
+	cl::Buffer buffer_output(context,CL_MEM_USE_HOST_PTR | CL_MEM_READ_WRITE, matrix_size_bytes, source_fpga_results.data());
+	m_Buffers.push_back(buffer);
+	m_Buffers.push_back(buffer_output);
+	std::cout<<"[INFO] cl::Buffer size_in_bytes: "<<matrix_size_bytes<<std::endl;
+
+    	//These commands will load the source_in1 and source_in2 vectors from the host
+    	//application into the buffer_in1 and buffer_in2 cl::Buffer objects. The data
+    	//will be be transferred from system memory over PCIe to the FPGA on-board
+    	//DDR memory.
+
+	std::vector<cl::Event> m_Mem2FpgaEvents;
+	std::vector<cl::Event> m_ExeKernelEvents;
+
+//    	q1.enqueueMigrateMemObjects({buffer},0/* 0 means from host*/);
+    	q1.enqueueMigrateMemObjects(m_Buffers,0/* 0 means from host*/,NULL,&l_event_1);
+	m_Mem2FpgaEvents.push_back(l_event_1);
+
+        int narg = 0;
+	kernel1.setArg(narg++, buffer);
+	kernel1.setArg(narg++, buffer);
+    	kernel1.setArg(narg++, l_M);
+        kernel1.setArg(narg++, l_K);
+        kernel1.setArg(narg++, l_N);
+        kernel1.setArg(narg++, l_LdA);
+        kernel1.setArg(narg++, l_LdB);
+        kernel1.setArg(narg++, l_LdC);
+        kernel1.setArg(narg++, l_LdX);
+        kernel1.setArg(narg++, l_postScale);
+
+	//Launch the kernel
+//    	q1.enqueueTask(kernel1, NULL, &event);
+	q1.enqueueTask(kernel1, &m_Mem2FpgaEvents, &l_event_2);
+	m_ExeKernelEvents.push_back(l_event_2);
+    	narg = 0;
+	kernel2.setArg(narg++, buffer);
+	//kernel1.setArg(narg++, buffer_gemm);
+	kernel2.setArg(narg++, buffer_output);
+	kernel2.setArg(narg++, dim/2);
+	kernel2.setArg(narg++, offset);
+	//kernel1.setArg(narg++, DATA_SIZE);
+	//Launch the kernel
+    	q1.enqueueTask(kernel2, &m_Mem2FpgaEvents, &l_event_3);
+	m_ExeKernelEvents.push_back(l_event_3);
+	m_Mem2FpgaEvents.clear();
+
+//    	q1.enqueueMigrateMemObjects({buffer},CL_MIGRATE_MEM_OBJECT_HOST);
+    	q1.enqueueMigrateMemObjects(m_Buffers,CL_MIGRATE_MEM_OBJECT_HOST, &m_ExeKernelEvents);
+	m_ExeKernelEvents.clear();
+
+    	q1.finish();
+
+    return kernel_duration;
+}
+
 uint64_t callFW (
     std::string l_xclbinFile,  //xclbinFile
     std::vector<GEMX_dataType,aligned_allocator<GEMX_dataType>>& source_in1,   //Input Matrix 1
@@ -207,12 +310,14 @@ uint64_t callFW (
     // std::vector<cl::Device> devices,
     // cl::Program::Binaries bins,
     //cl::Program program,
-    int dim                                         //One dimension of matrix
+    int dim,                                         //One dimension of matrix
+    int offset
 )
 {
     int size = dim;
     //size_t matrix_size_bytes = sizeof(int) * size * size;
-
+    printf("Size(B): %d\n", matrix_size_bytes);
+    printf("Dim: %d\n", dim);
     cl::Event event;//, event1, event2;
     uint64_t kernel_duration = 0;
 
@@ -232,7 +337,7 @@ uint64_t callFW (
     // //device.
     //std::string binaryFile = xcl::find_binary_file(device_name,"Kleene");
     cl::Program::Binaries bins = xcl::import_binary_file(l_xclbinFile);
-    // devices.resize(1);
+    devices.resize(1);
     cl::Program program(context, devices, bins);
 
     //This call will extract a kernel out of the program we loaded in the
@@ -265,7 +370,8 @@ uint64_t callFW (
     kernel1.setArg(narg++, buffer_in1);
     //kernel1.setArg(narg++, buffer_gemm);
     kernel1.setArg(narg++, buffer_output);
-  	kernel1.setArg(narg++, dim);
+  	kernel1.setArg(narg++, dim/2);
+  	kernel1.setArg(narg++, offset);
     //kernel1.setArg(narg++, DATA_SIZE);
     //Launch the kernel
     q1.enqueueTask(kernel1, NULL, &event);
@@ -276,6 +382,94 @@ uint64_t callFW (
   	//q1.enqueueMigrateMemObjects({buffer_gemm},CL_MIGRATE_MEM_OBJECT_HOST);
   	q1.enqueueMigrateMemObjects({buffer_output},CL_MIGRATE_MEM_OBJECT_HOST);
   	// q1.finish();
+
+    return kernel_duration;
+}
+
+//Functionality to setup OpenCL context and trigger the Kernel
+uint64_t RKleene_fpga (
+    std::string l_xclbinFile,  //xclbinFile
+    std::vector<short,aligned_allocator<short>>& source_in1,   //Input Matrix 1
+    //std::vector<short,aligned_allocator<short>>& source_gemm,   //GEMM buffer
+    std::vector<short,aligned_allocator<short>>& source_fpga_results,    //Output Matrix
+    std::vector<short,aligned_allocator<short>>& source_cpu_results,  //CPU results
+    int dim,                                         //One dimension of matrix
+    int offset
+)
+{
+    int size = dim;
+    size_t matrix_size_bytes = sizeof(short) * size * size;
+    printf("Size(B): %d\n", matrix_size_bytes);
+    printf("Dim: %d\n", dim);
+    cl::Event event;//, event1, event2;
+    uint64_t kernel_duration = 0;
+
+    //The get_xil_devices will return vector of Xilinx Devices
+    std::vector<cl::Device> devices = xcl::get_xil_devices();
+    cl::Device device = devices[0];
+
+    //Creating Context and Command Queue for selected Device
+    cl::Context context(device);
+    cl::CommandQueue q1(context, device, CL_QUEUE_PROFILING_ENABLE);
+
+    std::string device_name = device.getInfo<CL_DEVICE_NAME>();
+
+    //import_binary() command will find the OpenCL binary file created using the
+    //xocc compiler load into OpenCL Binary and return as Binaries
+    //OpenCL and it can contain many functions which can be executed on the
+    //device.
+    //std::string binaryFile = xcl::find_binary_file(device_name,"Kleene");
+    cl::Program::Binaries bins = xcl::import_binary_file(l_xclbinFile);
+    devices.resize(1);
+    cl::Program program(context, devices, bins);
+
+    //This call will extract a kernel out of the program we loaded in the
+    //previous line. A kernel is an OpenCL function that is executed on the
+    //FPGA. This function is defined in the src/mmult.cl file.
+    cl::Kernel kernel1(program,"FW");
+
+	//These commands will allocate memory on the FPGA. The cl::Buffer
+	//objects can be used to reference the memory locations on the device.
+	//The cl::Buffer object cannot be referenced directly and must be passed
+	//to other OpenCL functions.
+	cl::Buffer buffer_in1(context,CL_MEM_USE_HOST_PTR | CL_MEM_READ_WRITE, matrix_size_bytes, source_in1.data());
+	//cl::Buffer buffer_gemm(context,CL_MEM_USE_HOST_PTR | CL_MEM_READ_WRITE, matrix_size_bytes, source_gemm.data());
+	cl::Buffer buffer_output(context,CL_MEM_USE_HOST_PTR | CL_MEM_READ_WRITE, matrix_size_bytes, source_fpga_results.data());
+
+/*
+        std::cout << "The numbers are: ";
+        for (int ct = 0; ct < size*size; ct++){
+	    if(ct % size == 0)    std::cout << std::endl;
+            std::cout << source_in1[ct] << " ";
+        }
+        std::cout << std::endl;
+*/
+
+    	//These commands will load the source_in1 and source_in2 vectors from the host
+    	//application into the buffer_in1 and buffer_in2 cl::Buffer objects. The data
+    	//will be be transferred from system memory over PCIe to the FPGA on-board
+    	//DDR memory.
+
+    	q1.enqueueMigrateMemObjects({buffer_in1},0/* 0 means from host*/);
+    	//q1.enqueueMigrateMemObjects({buffer_gemm},0/* 0 means from host*/);
+	q1.enqueueMigrateMemObjects({buffer_output},0/* 0 means from host*/);
+
+    		    int narg = 0;
+		    kernel1.setArg(narg++, buffer_in1);
+		    //kernel1.setArg(narg++, buffer_gemm);
+		    kernel1.setArg(narg++, buffer_output);
+	    	    kernel1.setArg(narg++, dim/2);
+		    kernel1.setArg(narg++, offset);
+		    //kernel1.setArg(narg++, DATA_SIZE);
+		    //Launch the kernel
+    		    q1.enqueueTask(kernel1, NULL, &event);
+		    //wait();
+		    //kernel_duration += get_duration_ns(event);
+
+    	q1.enqueueMigrateMemObjects({buffer_in1},CL_MIGRATE_MEM_OBJECT_HOST);
+    	//q1.enqueueMigrateMemObjects({buffer_gemm},CL_MIGRATE_MEM_OBJECT_HOST);
+    	q1.enqueueMigrateMemObjects({buffer_output},CL_MIGRATE_MEM_OBJECT_HOST);
+    	q1.finish();
 
     return kernel_duration;
 }
@@ -312,16 +506,16 @@ int main(int argc, char **argv)
 
     printf("Main - %dx%dx%d, matrix_size_bytes: %d\n", l_M, l_K, l_N, matrix_size_bytes);
 
-    std::vector<GEMX_dataType,aligned_allocator<GEMX_dataType>> source_in1(matrix_size_bytes/sizeof(GEMX_dataType));
-    std::vector<GEMX_dataType,aligned_allocator<GEMX_dataType>> source_cpu_results(matrix_size_bytes/sizeof(GEMX_dataType));
+    std::vector<GEMX_dataType,aligned_allocator<GEMX_dataType>> source_in1(matrix_size_bytes);// /sizeof(GEMX_dataType));
+    std::vector<GEMX_dataType,aligned_allocator<GEMX_dataType>> source_cpu_results(matrix_size_bytes);// /sizeof(GEMX_dataType));
 
-    std::vector<GEMX_dataType,aligned_allocator<GEMX_dataType>> source_fpga(matrix_size_bytes/sizeof(GEMX_dataType));
-    std::vector<GEMX_dataType,aligned_allocator<GEMX_dataType>> source_fpga_results(matrix_size_bytes/sizeof(GEMX_dataType));
+    std::vector<GEMX_dataType,aligned_allocator<GEMX_dataType>> source_fpga(matrix_size_bytes);// /sizeof(GEMX_dataType));
+    std::vector<GEMX_dataType,aligned_allocator<GEMX_dataType>> source_fpga_results(matrix_size_bytes);// /sizeof(GEMX_dataType));
 
-    std::vector<GEMX_dataType,aligned_allocator<GEMX_dataType>> source_inA(matrix_ABsize_bytes/sizeof(GEMX_dataType));
-    std::vector<GEMX_dataType,aligned_allocator<GEMX_dataType>> source_inB(matrix_ABsize_bytes/sizeof(GEMX_dataType));
-    std::vector<GEMX_XdataType,aligned_allocator<GEMX_XdataType>> source_inX(matrix_Xsize_bytes/sizeof(GEMX_dataType));
-    std::vector<GEMX_dataType,aligned_allocator<GEMX_dataType>> source_outC(matrix_Csize_bytes/sizeof(GEMX_dataType));
+    std::vector<GEMX_dataType,aligned_allocator<GEMX_dataType>> source_inA(matrix_ABsize_bytes);// /sizeof(GEMX_dataType));
+    std::vector<GEMX_dataType,aligned_allocator<GEMX_dataType>> source_inB(matrix_ABsize_bytes);// /sizeof(GEMX_dataType));
+    std::vector<GEMX_XdataType,aligned_allocator<GEMX_XdataType>> source_inX(matrix_Xsize_bytes);// /sizeof(GEMX_dataType));
+    std::vector<GEMX_dataType,aligned_allocator<GEMX_dataType>> source_outC(matrix_Csize_bytes);// /sizeof(GEMX_dataType));
 
     //Create the test data and Software Result
     int loc = 0;
@@ -358,7 +552,7 @@ int main(int argc, char **argv)
         std::cout << std::endl;
 
     uint64_t kernel_duration = 0;
-
+    int offset = 4*3*size*size/4;
 
     std::cout << "Computing MM on CPU...\n";
     //MatMul(source_inA.data(), source_inB.data(), source_inX.data(), source_outC.data(), size, size, size);
@@ -382,7 +576,9 @@ int main(int argc, char **argv)
 
     //Compute FPGA Results
     //kernel_duration = GEMM_fpga(l_xclbinFile, source_in1, l_M, l_K, l_N, l_LdA, l_LdB, l_LdC, l_LdX, l_postScale);
-    kernel_duration = callFW(l_xclbinFile, source_fpga, source_fpga_results, DATA_SIZE*2);
+    //kernel_duration = callFW(l_xclbinFile, source_fpga, source_fpga_results, DATA_SIZE*2, offset);
+    //kernel_duration = RKleene_fpga(l_xclbinFile, source_fpga, /*source_gemm,*/ source_fpga_results, source_cpu_results, size*2, offset);
+    kernel_duration = Both_fpga(l_xclbinFile, source_in1, source_fpga_results, l_M, l_K, l_N, l_LdA, l_LdB, l_LdC, l_LdX, l_postScale, size*2, offset);
 
        std::cout << "The FPGA results are: ";
     /*   std::cout << std::endl << "C:";
@@ -394,17 +590,17 @@ int main(int argc, char **argv)
 	*/
        for (int ct = 0; ct < matrix_size_bytes/sizeof(GEMX_dataType); ct++){
          if(ct%size == 0)    std::cout << std::endl << ct/size << " | ";
-         std::cout << source_fpga_results[ct] << " ";
+         std::cout << source_in1[ct] << " ";
        }
         std::cout << std::endl;
     std::cout << "Finished. \n";
     //Compare the results of the FPGA to CPU
     bool match = true;
     for (int i = 0 ; i < 4*matrix_Csize_bytes/sizeof(GEMX_dataType); i++, C_start++){
-        if (/*source_outC[i] != source_in1[C_start]*/source_cpu_results[i] != source_fpga_results[i]){
+        if (/*source_outC[i] != source_in1[C_start]*/source_cpu_results[i] != source_in1[i]){
             std::cout << "Error: Result mismatch" << std::endl;
             std::cout << "i = " << i << " CPU result = " << /*source_outC[i]*/source_cpu_results[i]
-                << " FPGA result = " << /*source_in1[C_start]*/source_fpga_results[i] << std::endl;
+                << " FPGA result = " << /*source_in1[C_start]*/source_in1[i] << std::endl;
             match = false;
             break;
         }
