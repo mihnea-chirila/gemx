@@ -50,11 +50,15 @@ void GemmCall( DdrWideType* p_DdrRd,  //input/output matrix
     	     int l_M,  
 	     int l_K,  
 	     int l_N,
-    	     int l_LdA,  
-	     int l_LdB,  
-	     int l_LdC, 
-	     int l_LdX,
-    	     int l_postScaleVal
+    	     //int l_LdA,  
+	     //int l_LdB,  
+	     //int l_LdC, 
+	     //int l_LdX,
+    	     int l_postScaleVal,
+	     int aOffset,
+	     int bOffset,
+	     int cOffset,
+	     int xOffset
            )
 {
     #pragma HLS INLINE self off
@@ -65,34 +69,42 @@ void GemmCall( DdrWideType* p_DdrRd,  //input/output matrix
     #pragma HLS INTERFACE s_axilite port=l_M bundle=control
     #pragma HLS INTERFACE s_axilite port=l_K bundle=control
     #pragma HLS INTERFACE s_axilite port=l_N bundle=control
-    #pragma HLS INTERFACE s_axilite port=l_LdA bundle=control
-    #pragma HLS INTERFACE s_axilite port=l_LdB bundle=control
-    #pragma HLS INTERFACE s_axilite port=l_LdC bundle=control
-    #pragma HLS INTERFACE s_axilite port=l_LdX bundle=control
+    //#pragma HLS INTERFACE s_axilite port=l_LdA bundle=control
+    //#pragma HLS INTERFACE s_axilite port=l_LdB bundle=control
+    //#pragma HLS INTERFACE s_axilite port=l_LdC bundle=control
+    //#pragma HLS INTERFACE s_axilite port=l_LdX bundle=control
     #pragma HLS INTERFACE s_axilite port=l_postScaleVal bundle=control
+    #pragma HLS INTERFACE s_axilite port=aOffset bundle=control
+    #pragma HLS INTERFACE s_axilite port=bOffset bundle=control
+    #pragma HLS INTERFACE s_axilite port=cOffset bundle=control
+    #pragma HLS INTERFACE s_axilite port=xOffset bundle=control
     #pragma HLS INTERFACE s_axilite port=return bundle=control
     #pragma HLS DATA_PACK variable=p_DdrRd
     #pragma HLS DATA_PACK variable=p_DdrWr
 
     GemmType l_gemm;
 
-    DdrWideType *l_aAddr = p_DdrRd;
-    DdrWideType *l_bAddr = p_DdrRd + l_M*l_K/GEMX_ddrWidth;
-    DdrWideType *l_xAddr = p_DdrRd + l_M*l_K/GEMX_ddrWidth + l_K*l_N/GEMX_ddrWidth;
-    DdrWideType *l_cAddr = p_DdrWr + l_M*l_K/GEMX_ddrWidth + l_K*l_N/GEMX_ddrWidth + l_M*l_N/GEMX_XddrWidth;
+    DdrWideType *l_aAddr = p_DdrRd + aOffset/GEMX_ddrWidth;
+    DdrWideType *l_bAddr = p_DdrRd + bOffset/GEMX_ddrWidth;
+    DdrWideType *l_xAddr = p_DdrRd + xOffset/GEMX_ddrWidth;
+    DdrWideType *l_cAddr = p_DdrWr + cOffset/GEMX_ddrWidth;
 
     int t_aColMemWords = GEMX_gemmKBlocks, t_aRowMemWords = GEMX_gemmMBlocks, t_bColMemWords = GEMX_gemmNBlocks;
         	const unsigned int l_aColBlocks = l_K / (GEMX_ddrWidth * t_aColMemWords);
         	const unsigned int l_aRowBlocks = l_M / (GEMX_ddrWidth * t_aRowMemWords);
         	const unsigned int l_bColBlocks = l_N / (GEMX_ddrWidth * t_bColMemWords);
-        	const unsigned int l_aLd  = l_LdA / GEMX_ddrWidth;
-        	const unsigned int l_bLd  = l_LdB / GEMX_ddrWidth;
-        	const unsigned int l_cLd  = l_LdC / GEMX_ddrWidth;
-		const unsigned int l_xLd = l_LdX / GEMX_XddrWidth;
+        	const unsigned int l_aLd  = l_K / GEMX_ddrWidth;
+        	const unsigned int l_bLd  = l_N / GEMX_ddrWidth;
+        	const unsigned int l_cLd  = l_N / GEMX_ddrWidth;
+		const unsigned int l_xLd = l_N / GEMX_XddrWidth;
     unsigned int l_transpBlocks = l_aColBlocks * l_aRowBlocks * l_bColBlocks *t_aRowMemWords;
 
       #ifndef __SYNTHESIS__
-    	std::cout<<"p_DdrRd = "<<l_aAddr<<std::endl;
+    	std::cout<<"aOffset = "<<aOffset<<std::endl;
+    	std::cout<<"bOffset = "<<bOffset<<std::endl;
+    	std::cout<<"cOffset = "<<cOffset<<std::endl;
+    	std::cout<<"xOffset = "<<xOffset<<std::endl;
+    	std::cout<<"p_DdrRd = "<<p_DdrRd<<std::endl;
 //    	std::cout<<"l_aAddr = "<<l_aAddr<<std::endl;
 //	std::cout<<"l_bAddr = "<<l_bAddr<<std::endl;
 //	std::cout<<"l_cAddr = "<<l_cAddr<<std::endl;

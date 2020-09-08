@@ -63,7 +63,7 @@
 
 
 //Dimension of square input array
-#define DATA_SIZE 32
+#define DATA_SIZE 64
 //Each matrix A, B, X, and C represent a quarter of the input matrix
 size_t matrix_Xsize_bytes = sizeof(GEMX_XdataType) * DATA_SIZE * DATA_SIZE;
 size_t matrix_ABsize_bytes = sizeof(GEMX_dataType) * DATA_SIZE * DATA_SIZE;
@@ -211,7 +211,11 @@ uint64_t Both_fpga (
     int l_LdX,
     int l_postScale,
     int dim,                                         //One dimension of matrix
-    int offset
+    int offset,
+    int aOffset,
+    int bOffset,
+    int cOffset,
+    int xOffset
 )
 {
     cl::Event l_event_1, l_event_2, l_event_3;
@@ -270,11 +274,15 @@ uint64_t Both_fpga (
     	kernel1.setArg(narg++, l_M);
         kernel1.setArg(narg++, l_K);
         kernel1.setArg(narg++, l_N);
-        kernel1.setArg(narg++, l_LdA);
-        kernel1.setArg(narg++, l_LdB);
-        kernel1.setArg(narg++, l_LdC);
-        kernel1.setArg(narg++, l_LdX);
+        //kernel1.setArg(narg++, l_LdA);
+        //kernel1.setArg(narg++, l_LdB);
+        //kernel1.setArg(narg++, l_LdC);
+        //kernel1.setArg(narg++, l_LdX);
         kernel1.setArg(narg++, l_postScale);
+        kernel1.setArg(narg++, aOffset);
+        kernel1.setArg(narg++, bOffset);
+        kernel1.setArg(narg++, cOffset);
+        kernel1.setArg(narg++, xOffset);
 
 	//Launch the kernel
 //    	q1.enqueueTask(kernel1, NULL, &event);
@@ -284,7 +292,7 @@ uint64_t Both_fpga (
 	kernel2.setArg(narg++, buffer);
 	//kernel1.setArg(narg++, buffer_gemm);
 	kernel2.setArg(narg++, buffer_output);
-	kernel2.setArg(narg++, dim/2);
+	kernel2.setArg(narg++, dim/4);
 	kernel2.setArg(narg++, offset);
 	//kernel1.setArg(narg++, DATA_SIZE);
 	//Launch the kernel
@@ -492,12 +500,13 @@ int main(int argc, char **argv)
   std::string l_xclbinFile(argv[l_argIdx]);
   unsigned int l_ddrW = GEMX_ddrWidth;
   // the smallest matrices for flow testing
-  unsigned int l_M = DATA_SIZE,  l_K = DATA_SIZE,  l_N = DATA_SIZE;
+  unsigned int l_M = DATA_SIZE/2,  l_K = DATA_SIZE/2,  l_N = DATA_SIZE/2;
 
   unsigned int l_LdA = l_K,  l_LdB = l_N,  l_LdC = l_N, l_LdX = l_N;
   int32_t l_postScaleVal = 1, l_postScaleShift = 0;
 
   int32_t l_postScale = (l_postScaleVal << 8) | (l_postScaleShift & 0x000000ff);
+  int32_t aOffset = 32*32, bOffset = 2*32*32, cOffset = 0, xOffset = 3*32*32;
 
     //Allocate Memory in Host Memory
     int size = DATA_SIZE;
@@ -556,7 +565,7 @@ int main(int argc, char **argv)
 
     std::cout << "Computing MM on CPU...\n";
     //MatMul(source_inA.data(), source_inB.data(), source_inX.data(), source_outC.data(), size, size, size);
-    FW_cpu(source_in1.data(), source_cpu_results.data(), DATA_SIZE*2);
+    FW_cpu(source_in1.data(), source_cpu_results.data(), DATA_SIZE);
        // Display the numbers produced:
 
         std::cout << "The MM results are: ";
@@ -578,7 +587,7 @@ int main(int argc, char **argv)
     //kernel_duration = GEMM_fpga(l_xclbinFile, source_in1, l_M, l_K, l_N, l_LdA, l_LdB, l_LdC, l_LdX, l_postScale);
     //kernel_duration = callFW(l_xclbinFile, source_fpga, source_fpga_results, DATA_SIZE*2, offset);
     //kernel_duration = RKleene_fpga(l_xclbinFile, source_fpga, /*source_gemm,*/ source_fpga_results, source_cpu_results, size*2, offset);
-    kernel_duration = Both_fpga(l_xclbinFile, source_in1, source_fpga_results, l_M, l_K, l_N, l_LdA, l_LdB, l_LdC, l_LdX, l_postScale, size*2, offset);
+    kernel_duration = Both_fpga(l_xclbinFile, source_in1, source_fpga_results, l_M, l_K, l_N, l_LdA, l_LdB, l_LdC, l_LdX, l_postScale, size*2, offset, aOffset, bOffset, cOffset, xOffset);
 
        std::cout << "The FPGA results are: ";
     /*   std::cout << std::endl << "C:";
