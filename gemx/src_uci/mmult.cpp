@@ -43,6 +43,13 @@ typedef gemx::WideType<GEMX_XdataType, GEMX_XddrWidth> XDdrWideType;
 typedef hls::stream<DdrWideType> DdrStream;
 typedef hls::stream<XDdrWideType> XDdrStream;
 
+typedef struct Offsets{
+    int A;
+    int B;
+    int X;
+    int C;
+}offsets;
+
 // Creating and passing buffer to GEMX
 extern "C" {
 void GemmCall( DdrWideType* p_DdrRd,  //input/output matrix
@@ -54,7 +61,8 @@ void GemmCall( DdrWideType* p_DdrRd,  //input/output matrix
 	     int l_LdB,  
 	     int l_LdC, 
 	     int l_LdX,
-    	     int l_postScaleVal
+    	     int l_postScaleVal,
+	     offsets Offset
            )
 {
     #pragma HLS INLINE self off
@@ -76,10 +84,10 @@ void GemmCall( DdrWideType* p_DdrRd,  //input/output matrix
 
     GemmType l_gemm;
 
-    DdrWideType *l_aAddr = p_DdrRd;
-    DdrWideType *l_bAddr = p_DdrRd + l_M*l_K/GEMX_ddrWidth;
-    DdrWideType *l_xAddr = p_DdrRd + l_M*l_K/GEMX_ddrWidth + l_K*l_N/GEMX_ddrWidth;
-    DdrWideType *l_cAddr = p_DdrWr + l_M*l_K/GEMX_ddrWidth + l_K*l_N/GEMX_ddrWidth + l_M*l_N/GEMX_XddrWidth;
+    DdrWideType *l_aAddr = p_DdrRd + Offset.A;
+    DdrWideType *l_bAddr = p_DdrRd + Offset.B;//l_M*l_K/GEMX_ddrWidth;
+    DdrWideType *l_xAddr = p_DdrRd + Offset.X;//l_M*l_K/GEMX_ddrWidth + l_K*l_N/GEMX_ddrWidth;
+    DdrWideType *l_cAddr = p_DdrWr + Offset.C;//l_M*l_K/GEMX_ddrWidth + l_K*l_N/GEMX_ddrWidth + l_M*l_N/GEMX_XddrWidth;
 
     int t_aColMemWords = GEMX_gemmKBlocks, t_aRowMemWords = GEMX_gemmMBlocks, t_bColMemWords = GEMX_gemmNBlocks;
         	const unsigned int l_aColBlocks = l_K / (GEMX_ddrWidth * t_aColMemWords);

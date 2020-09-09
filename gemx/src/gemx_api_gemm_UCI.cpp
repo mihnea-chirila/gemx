@@ -63,12 +63,20 @@
 
 
 //Dimension of square input array
-#define DATA_SIZE 32
+#define DATA_SIZE 8192
+#define BSIZE 32
 //Each matrix A, B, X, and C represent a quarter of the input matrix
 size_t matrix_Xsize_bytes = sizeof(GEMX_XdataType) * DATA_SIZE * DATA_SIZE;
 size_t matrix_ABsize_bytes = sizeof(GEMX_dataType) * DATA_SIZE * DATA_SIZE;
 size_t matrix_Csize_bytes = sizeof(GEMX_dataType) * DATA_SIZE * DATA_SIZE;
 size_t matrix_size_bytes = 2 * matrix_ABsize_bytes + matrix_Xsize_bytes + matrix_Csize_bytes;
+
+typedef struct Offsets{
+    int A;
+    int B;
+    int X;
+    int C;
+}offsets;
 
 //Matrix multiply, out = in + in1 x in2
 void MatMul(GEMX_dataType *in1, GEMX_dataType *in2, GEMX_dataType *in, GEMX_dataType *out, int outRow, int outCol, int midSize){
@@ -198,6 +206,353 @@ uint64_t GEMM_fpga (
     return kernel_duration;
 }
 
+void RKleene_fpga_helper (
+    std::vector<GEMX_dataType,aligned_allocator<GEMX_dataType>>& source_in1,   //Input Matrix 1
+    cl::Buffer& buf,   	// Matrix buffer
+    cl::Buffer& buf_out,   	// Matrix buffer
+    int x, int y,      	// Origin coordinates
+    int dim,            // One dimension of computation
+    cl::Kernel kernel1, // MatMul kernel
+    cl::Kernel kernel2, // FW kernel
+    cl::CommandQueue& q1,// Command Queue
+    uint64_t& kernel_duration,
+    int l_M,
+    int l_K,
+    int l_N,
+    int l_LdA,
+    int l_LdB,
+    int l_LdC,
+    int l_LdX,
+    int l_postScale,
+    int offset,
+    offsets Offset
+)
+{
+    int mid = dim/2;
+    cl::Event event;
+
+    if(dim<=BSIZE){
+    	printf("For DIM = %d:\n", dim);
+	printf("For MID = %d:\n", mid);
+    	//Set the kernel arguments
+    	int narg = 0;
+    	kernel2.setArg(narg++, buf);
+	kernel2.setArg(narg++, buf_out);
+    	//kernel2.setArg(narg++, x);
+    	//kernel2.setArg(narg++, y);
+    	kernel2.setArg(narg++, dim);
+	kernel2.setArg(narg++, offset);
+	//printf("\tPerforming FW...\n");
+    	//Launch the kernel
+    	q1.enqueueTask(kernel2, NULL, &event);
+	//wait();
+	//printf("\tFinished.\n");
+	
+	//q1.enqueueMigrateMemObjects({buf},CL_MIGRATE_MEM_OBJECT_HOST);
+        // Display the current matrix:
+        /*std::cout << "The matrix is: ";
+        for (int ct = 0; ct < DATA_SIZE*DATA_SIZE; ct++){
+	    if(ct % DATA_SIZE == 0)    std::cout << std::endl;
+            std::cout << source_in1[ct] << " ";
+        }
+        std::cout << std::endl;*/
+    	//q1.enqueueMigrateMemObjects({buf},0/* 0 means from host*/);
+	
+	//kernel_duration += get_duration_ns(event);
+    }else{
+	RKleene_fpga_helper(source_in1, buf, buf_out, x, y, mid, kernel1, kernel2, q1, kernel_duration, mid, mid, mid, mid, mid, mid, mid, l_postScale, offset);
+    	printf("For DIM = %d:\n", dim);
+	printf("For MID = %d:\n", mid);
+	//printf("\tPerforming B += A*B...\n");
+	//B += A*B
+    	int narg = 0;
+
+	/*kernel1.setArg(narg++, buf);
+	kernel1.setArg(narg++, buf_out);
+	kernel1.setArg(narg++, x);
+	kernel1.setArg(narg++, y);
+	kernel1.setArg(narg++, y+mid);
+	kernel1.setArg(narg++, mid);
+	kernel1.setArg(narg++, DATA_SIZE);*/
+	kernel1.setArg(narg++, buf);
+	kernel1.setArg(narg++, buf);
+    	kernel1.setArg(narg++, l_M);
+        kernel1.setArg(narg++, l_K);
+        kernel1.setArg(narg++, l_N);
+        kernel1.setArg(narg++, l_LdA);
+        kernel1.setArg(narg++, l_LdB);
+        kernel1.setArg(narg++, l_LdC);
+        kernel1.setArg(narg++, l_LdX);
+        kernel1.setArg(narg++, l_postScale);
+        kernel1.setArg(narg++, Offset);
+
+	//Launch the kernel
+    	q1.enqueueTask(kernel1, NULL, &event);
+	//wait();
+	//printf("\tFinished.\n");
+	
+	//q1.enqueueMigrateMemObjects({buf},CL_MIGRATE_MEM_OBJECT_HOST);
+        // Display the current matrix:
+        /*std::cout << "The matrix is: ";
+        for (int ct = 0; ct < DATA_SIZE*DATA_SIZE; ct++){
+	    if(ct % DATA_SIZE == 0)    std::cout << std::endl;
+            std::cout << source_in1[ct] << " ";
+        }
+        std::cout << std::endl;*/
+    	//q1.enqueueMigrateMemObjects({buf},0/* 0 means from host*/);
+
+	//kernel_duration += get_duration_ns(event);
+
+	//printf("\tPerforming C += C*A...\n");
+	//C += C*A
+    	narg = 0;
+	/*kernel1.setArg(narg++, buf);
+	kernel1.setArg(narg++, x+mid);
+	kernel1.setArg(narg++, y);
+	kernel1.setArg(narg++, x+mid);
+	kernel1.setArg(narg++, y);
+	kernel1.setArg(narg++, x);
+	kernel1.setArg(narg++, y);
+	kernel1.setArg(narg++, dim-mid);
+	kernel1.setArg(narg++, mid);
+	kernel1.setArg(narg++, mid);
+	kernel1.setArg(narg++, DATA_SIZE);*/
+	/*kernel1.setArg(narg++, buf);
+	kernel1.setArg(narg++, buf_out);
+	kernel1.setArg(narg++, x+mid);
+	kernel1.setArg(narg++, y);
+	kernel1.setArg(narg++, y);
+	kernel1.setArg(narg++, mid);
+	kernel1.setArg(narg++, DATA_SIZE);*/
+	kernel1.setArg(narg++, buf);
+	kernel1.setArg(narg++, buf);
+    	kernel1.setArg(narg++, l_M);
+        kernel1.setArg(narg++, l_K);
+        kernel1.setArg(narg++, l_N);
+        kernel1.setArg(narg++, l_LdA);
+        kernel1.setArg(narg++, l_LdB);
+        kernel1.setArg(narg++, l_LdC);
+        kernel1.setArg(narg++, l_LdX);
+        kernel1.setArg(narg++, l_postScale);
+        kernel1.setArg(narg++, Offset);
+	//Launch the kernel
+    	q1.enqueueTask(kernel1, NULL, &event);
+	//wait();
+	//printf("\tFinished.\n");
+	
+	//q1.enqueueMigrateMemObjects({buf},CL_MIGRATE_MEM_OBJECT_HOST);
+        // Display the current matrix:
+        /*std::cout << "The matrix is: ";
+        for (int ct = 0; ct < DATA_SIZE*DATA_SIZE; ct++){
+	    if(ct % DATA_SIZE == 0)    std::cout << std::endl;
+            std::cout << source_in1[ct] << " ";
+        }
+        std::cout << std::endl;*/
+    	//q1.enqueueMigrateMemObjects({buf},0/* 0 means from host*/);
+
+	//kernel_duration += get_duration_ns(event);
+
+	//printf("\tPerforming D += C*B...\n");
+	//D += C*B
+    	narg = 0;
+	/*kernel1.setArg(narg++, buf);
+	kernel1.setArg(narg++, x+mid);
+	kernel1.setArg(narg++, y+mid);
+	kernel1.setArg(narg++, x+mid);
+	kernel1.setArg(narg++, y);
+	kernel1.setArg(narg++, x);
+	kernel1.setArg(narg++, y+mid);
+	kernel1.setArg(narg++, dim-mid);
+	kernel1.setArg(narg++, dim-mid);
+	kernel1.setArg(narg++, mid);
+	kernel1.setArg(narg++, DATA_SIZE);*/
+	/*kernel1.setArg(narg++, buf);
+	kernel1.setArg(narg++, buf_out);
+	kernel1.setArg(narg++, x+mid);
+	kernel1.setArg(narg++, y);
+	kernel1.setArg(narg++, y+mid);
+	kernel1.setArg(narg++, mid);
+	kernel1.setArg(narg++, DATA_SIZE);*/
+	kernel1.setArg(narg++, buf);
+	kernel1.setArg(narg++, buf);
+    	kernel1.setArg(narg++, l_M);
+        kernel1.setArg(narg++, l_K);
+        kernel1.setArg(narg++, l_N);
+        kernel1.setArg(narg++, l_LdA);
+        kernel1.setArg(narg++, l_LdB);
+        kernel1.setArg(narg++, l_LdC);
+        kernel1.setArg(narg++, l_LdX);
+        kernel1.setArg(narg++, l_postScale);
+        kernel1.setArg(narg++, Offset);
+	//Launch the kernel
+    	q1.enqueueTask(kernel1, NULL, &event);
+	//wait();
+	//printf("\tFinished.\n");
+	
+	//q1.enqueueMigrateMemObjects({buf},CL_MIGRATE_MEM_OBJECT_HOST);
+        // Display the current matrix:
+        /*std::cout << "The matrix is: ";
+        for (int ct = 0; ct < DATA_SIZE*DATA_SIZE; ct++){
+	    if(ct % DATA_SIZE == 0)    std::cout << std::endl;
+            std::cout << source_in1[ct] << " ";
+        }
+        std::cout << std::endl;*/
+    	//q1.enqueueMigrateMemObjects({buf},0/* 0 means from host*/);
+
+	//kernel_duration += get_duration_ns(event);
+
+	RKleene_fpga_helper(source_in1, buf, buf_out, x+mid, y+mid, dim-mid, kernel1, kernel2, q1, kernel_duration, mid, mid, mid, mid, mid, mid, mid, l_postScale, offset, Offset);
+    	//printf("For DIM = %d:\n", dim);
+	//printf("For MID = %d:\n", mid);
+	//printf("\tPerforming B += B*D...\n");
+	//B += B*D
+    	narg = 0;
+/*	kernel1.setArg(narg++, buf);
+	kernel1.setArg(narg++, x);
+	kernel1.setArg(narg++, y+mid);
+	kernel1.setArg(narg++, x);
+	kernel1.setArg(narg++, y+mid);
+	kernel1.setArg(narg++, x+mid);
+	kernel1.setArg(narg++, y+mid);
+	kernel1.setArg(narg++, mid);
+	kernel1.setArg(narg++, dim-mid);
+	kernel1.setArg(narg++, dim-mid);
+	kernel1.setArg(narg++, DATA_SIZE);*/
+	/*kernel1.setArg(narg++, buf);
+	kernel1.setArg(narg++, buf_out);
+	kernel1.setArg(narg++, x);
+	kernel1.setArg(narg++, x+mid);
+	kernel1.setArg(narg++, y+mid);
+	kernel1.setArg(narg++, mid);
+	kernel1.setArg(narg++, DATA_SIZE);*/
+	kernel1.setArg(narg++, buf);
+	kernel1.setArg(narg++, buf);
+    	kernel1.setArg(narg++, l_M);
+        kernel1.setArg(narg++, l_K);
+        kernel1.setArg(narg++, l_N);
+        kernel1.setArg(narg++, l_LdA);
+        kernel1.setArg(narg++, l_LdB);
+        kernel1.setArg(narg++, l_LdC);
+        kernel1.setArg(narg++, l_LdX);
+        kernel1.setArg(narg++, l_postScale);
+        kernel1.setArg(narg++, Offset);
+	//Launch the kernel
+    	q1.enqueueTask(kernel1, NULL, &event);
+	//wait();
+	//printf("\tFinished.\n");
+	
+	//q1.enqueueMigrateMemObjects({buf},CL_MIGRATE_MEM_OBJECT_HOST);
+        // Display the current matrix:
+        /*std::cout << "The matrix is: ";
+        for (int ct = 0; ct < DATA_SIZE*DATA_SIZE; ct++){
+	    if(ct % DATA_SIZE == 0)    std::cout << std::endl;
+            std::cout << source_in1[ct] << " ";
+        }
+        std::cout << std::endl;*/
+    	//q1.enqueueMigrateMemObjects({buf},0/* 0 means from host*/);
+
+	//kernel_duration += get_duration_ns(event);
+
+	//printf("\tPerforming C += D*C...\n");
+	//C += D*C
+    	narg = 0;
+	/*kernel1.setArg(narg++, buf);
+	kernel1.setArg(narg++, x+mid);
+	kernel1.setArg(narg++, y);
+	kernel1.setArg(narg++, x+mid);
+	kernel1.setArg(narg++, y+mid);
+	kernel1.setArg(narg++, x+mid);
+	kernel1.setArg(narg++, y);
+	kernel1.setArg(narg++, dim-mid);
+	kernel1.setArg(narg++, mid);
+	kernel1.setArg(narg++, dim-mid);
+	kernel1.setArg(narg++, DATA_SIZE);*/
+	/*kernel1.setArg(narg++, buf);
+	kernel1.setArg(narg++, buf_out);
+	kernel1.setArg(narg++, x+mid);
+	kernel1.setArg(narg++, y+mid);
+	kernel1.setArg(narg++, y);
+	kernel1.setArg(narg++, mid);
+	kernel1.setArg(narg++, DATA_SIZE);*/
+	kernel1.setArg(narg++, buf);
+	kernel1.setArg(narg++, buf);
+    	kernel1.setArg(narg++, l_M);
+        kernel1.setArg(narg++, l_K);
+        kernel1.setArg(narg++, l_N);
+        kernel1.setArg(narg++, l_LdA);
+        kernel1.setArg(narg++, l_LdB);
+        kernel1.setArg(narg++, l_LdC);
+        kernel1.setArg(narg++, l_LdX);
+        kernel1.setArg(narg++, l_postScale);
+        kernel1.setArg(narg++, Offset);
+	//Launch the kernel
+    	q1.enqueueTask(kernel1, NULL, &event);
+	//wait();
+	//printf("\tFinished.\n");
+	
+	//q1.enqueueMigrateMemObjects({buf},CL_MIGRATE_MEM_OBJECT_HOST);
+        // Display the current matrix:
+        /*std::cout << "The matrix is: ";
+        for (int ct = 0; ct < DATA_SIZE*DATA_SIZE; ct++){
+	    if(ct % DATA_SIZE == 0)    std::cout << std::endl;
+            std::cout << source_in1[ct] << " ";
+        }
+        std::cout << std::endl;*/
+    	//q1.enqueueMigrateMemObjects({buf},0/* 0 means from host*/);
+
+	//kernel_duration += get_duration_ns(event);
+
+	//printf("\tPerforming A += B*C...\n");
+	//A += B*C
+    	narg = 0;
+	/*kernel1.setArg(narg++, buf);
+	kernel1.setArg(narg++, x);
+	kernel1.setArg(narg++, y);
+	kernel1.setArg(narg++, x);
+	kernel1.setArg(narg++, y+mid);
+	kernel1.setArg(narg++, x+mid);
+	kernel1.setArg(narg++, y);
+	kernel1.setArg(narg++, mid);
+	kernel1.setArg(narg++, mid);
+	kernel1.setArg(narg++, dim-mid);
+	kernel1.setArg(narg++, DATA_SIZE);*/
+	/*kernel1.setArg(narg++, buf);
+	kernel1.setArg(narg++, buf_out);
+	kernel1.setArg(narg++, x);
+	kernel1.setArg(narg++, y+mid);
+	kernel1.setArg(narg++, y);
+	kernel1.setArg(narg++, mid);
+	kernel1.setArg(narg++, DATA_SIZE);*/
+	kernel1.setArg(narg++, buf);
+	kernel1.setArg(narg++, buf);
+    	kernel1.setArg(narg++, l_M);
+        kernel1.setArg(narg++, l_K);
+        kernel1.setArg(narg++, l_N);
+        kernel1.setArg(narg++, l_LdA);
+        kernel1.setArg(narg++, l_LdB);
+        kernel1.setArg(narg++, l_LdC);
+        kernel1.setArg(narg++, l_LdX);
+        kernel1.setArg(narg++, l_postScale);
+        kernel1.setArg(narg++, Offset);
+	//Launch the kernel
+    	q1.enqueueTask(kernel1, NULL, &event);
+	//wait();
+	//printf("\tFinished.\n");
+	
+	//q1.enqueueMigrateMemObjects({buf},CL_MIGRATE_MEM_OBJECT_HOST);
+        // Display the current matrix:
+        /*std::cout << "The matrix is: ";
+        for (int ct = 0; ct < DATA_SIZE*DATA_SIZE; ct++){
+	    if(ct % DATA_SIZE == 0)    std::cout << std::endl;
+            std::cout << source_in1[ct] << " ";
+        }
+        std::cout << std::endl;*/
+    	//q1.enqueueMigrateMemObjects({buf},0/* 0 means from host*/);
+
+	//kernel_duration += get_duration_ns(event);
+    }
+}
+
 uint64_t Both_fpga (
     std::string l_xclbinFile,  //xclbinFile
     std::vector<GEMX_dataType,aligned_allocator<GEMX_dataType>>& source_in1,   //Input/Otput Matrix 1
@@ -211,7 +566,8 @@ uint64_t Both_fpga (
     int l_LdX,
     int l_postScale,
     int dim,                                         //One dimension of matrix
-    int offset
+    int offset,
+    offsets Offset
 )
 {
     cl::Event l_event_1, l_event_2, l_event_3;
@@ -261,9 +617,9 @@ uint64_t Both_fpga (
 	std::vector<cl::Event> m_ExeKernelEvents;
 
 //    	q1.enqueueMigrateMemObjects({buffer},0/* 0 means from host*/);
-    	q1.enqueueMigrateMemObjects(m_Buffers,0/* 0 means from host*/,NULL,&l_event_1);
-	m_Mem2FpgaEvents.push_back(l_event_1);
-
+//    	q1.enqueueMigrateMemObjects(m_Buffers,0/* 0 means from host*/,NULL,&l_event_1);
+/*	m_Mem2FpgaEvents.push_back(l_event_1);
+	
         int narg = 0;
 	kernel1.setArg(narg++, buffer);
 	kernel1.setArg(narg++, buffer);
@@ -275,10 +631,10 @@ uint64_t Both_fpga (
         kernel1.setArg(narg++, l_LdC);
         kernel1.setArg(narg++, l_LdX);
         kernel1.setArg(narg++, l_postScale);
-
+*/
 	//Launch the kernel
 //    	q1.enqueueTask(kernel1, NULL, &event);
-	q1.enqueueTask(kernel1, &m_Mem2FpgaEvents, &l_event_2);
+/*	q1.enqueueTask(kernel1, &m_Mem2FpgaEvents, &l_event_2);
 	m_ExeKernelEvents.push_back(l_event_2);
     	narg = 0;
 	kernel2.setArg(narg++, buffer);
@@ -291,7 +647,9 @@ uint64_t Both_fpga (
     	q1.enqueueTask(kernel2, &m_Mem2FpgaEvents, &l_event_3);
 	m_ExeKernelEvents.push_back(l_event_3);
 	m_Mem2FpgaEvents.clear();
+*/
 
+	RKleene_fpga_helper(source_in1, buffer, buffer_output, 0, 0, dim, kernel1, kernel2, q1, kernel_duration, l_M, l_K, l_N, l_LdA, l_LdB, l_LdC, l_LdX, l_postScale, offset, Offset);
 //    	q1.enqueueMigrateMemObjects({buffer},CL_MIGRATE_MEM_OBJECT_HOST);
     	q1.enqueueMigrateMemObjects(m_Buffers,CL_MIGRATE_MEM_OBJECT_HOST, &m_ExeKernelEvents);
 	m_ExeKernelEvents.clear();
@@ -498,6 +856,8 @@ int main(int argc, char **argv)
   int32_t l_postScaleVal = 1, l_postScaleShift = 0;
 
   int32_t l_postScale = (l_postScaleVal << 8) | (l_postScaleShift & 0x000000ff);
+  offsets Offset;
+  Offset.A = 0; Offset.B = 32*32; Offset.X = 2*32*32; Offset.C = 3*32*32;
 
     //Allocate Memory in Host Memory
     int size = DATA_SIZE;
@@ -541,7 +901,7 @@ int main(int argc, char **argv)
 
         // Display the numbers read:
         std::cout << "The numbers are: ";
-        std::cout << std::endl << "A:";
+        /*std::cout << std::endl << "A:";
         for (int ct = 0; ct < matrix_size_bytes/sizeof(GEMX_dataType); ct++){
           if(ct == matrix_ABsize_bytes/sizeof(GEMX_dataType)) std::cout << std::endl << "B:";
           if(ct == 2*matrix_ABsize_bytes/sizeof(GEMX_dataType)) std::cout << std::endl << "X:";
@@ -549,14 +909,14 @@ int main(int argc, char **argv)
           if(ct%size == 0)    std::cout << std::endl << ct/size << " | ";
           std::cout << source_in1[ct] << " ";
         }
-        std::cout << std::endl;
+        std::cout << std::endl;*/
 
     uint64_t kernel_duration = 0;
     int offset = 4*3*size*size/4;
 
     std::cout << "Computing MM on CPU...\n";
     //MatMul(source_inA.data(), source_inB.data(), source_inX.data(), source_outC.data(), size, size, size);
-    FW_cpu(source_in1.data(), source_cpu_results.data(), DATA_SIZE*2);
+    //FW_cpu(source_in1.data(), source_cpu_results.data(), DATA_SIZE*2);
        // Display the numbers produced:
 
         std::cout << "The MM results are: ";
@@ -566,19 +926,19 @@ int main(int argc, char **argv)
           std::cout << source_outC[ct] << " ";
         }
         std::cout << std::endl;
-	*/
+	
        for (int ct = 0; ct < matrix_size_bytes/sizeof(GEMX_dataType); ct++){
          if(ct%size == 0)    std::cout << std::endl << ct/size << " | ";
          std::cout << source_cpu_results[ct] << " ";
        }
-        std::cout << std::endl;
+        std::cout << std::endl;*/
     std::cout << "Computing MM on FPGA... \n";
 
     //Compute FPGA Results
     //kernel_duration = GEMM_fpga(l_xclbinFile, source_in1, l_M, l_K, l_N, l_LdA, l_LdB, l_LdC, l_LdX, l_postScale);
     //kernel_duration = callFW(l_xclbinFile, source_fpga, source_fpga_results, DATA_SIZE*2, offset);
     //kernel_duration = RKleene_fpga(l_xclbinFile, source_fpga, /*source_gemm,*/ source_fpga_results, source_cpu_results, size*2, offset);
-    kernel_duration = Both_fpga(l_xclbinFile, source_in1, source_fpga_results, l_M, l_K, l_N, l_LdA, l_LdB, l_LdC, l_LdX, l_postScale, size*2, offset);
+    kernel_duration = Both_fpga(l_xclbinFile, source_in1, source_fpga_results, l_M, l_K, l_N, l_LdA, l_LdB, l_LdC, l_LdX, l_postScale, size*2, offset, Offset);
 
        std::cout << "The FPGA results are: ";
     /*   std::cout << std::endl << "C:";
@@ -588,11 +948,11 @@ int main(int argc, char **argv)
        }
         std::cout << std::endl;
 	*/
-       for (int ct = 0; ct < matrix_size_bytes/sizeof(GEMX_dataType); ct++){
+       /*for (int ct = 0; ct < matrix_size_bytes/sizeof(GEMX_dataType); ct++){
          if(ct%size == 0)    std::cout << std::endl << ct/size << " | ";
          std::cout << source_in1[ct] << " ";
        }
-        std::cout << std::endl;
+        std::cout << std::endl;*/
     std::cout << "Finished. \n";
     //Compare the results of the FPGA to CPU
     bool match = true;
