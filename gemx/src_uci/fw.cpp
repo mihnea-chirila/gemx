@@ -145,9 +145,9 @@ void FW( DdrWideType* in,
 				//A[i][j] = B[i][j];
         //out[iter/GEMX_ddrWidth].getVal(iter%GEMX_ddrWidth) = A[i][j];
 	in[iter/GEMX_ddrWidth].getVal(iter%GEMX_ddrWidth) = B[i/dim][j%dim];
-        #ifndef __SYNTHESIS__
-        std::cout<<"Out["<<i<<"]["<<j<<"]: "<<out[iter/GEMX_ddrWidth]<<"\n";
-        #endif
+        /*#ifndef __SYNTHESIS__
+        std::cout<<"Out["<<i<<"]["<<j<<"]: "<<in[iter/GEMX_ddrWidth]<<"\n";
+        #endif*/
     }
 }
 }
